@@ -1,5 +1,5 @@
 
-var utils = require('../utils');
+var utils = require('./utils');
 
 var error = require('./error');
 var errorMessages = error.messages;

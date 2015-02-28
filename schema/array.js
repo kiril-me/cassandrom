@@ -17,7 +17,7 @@ var SchemaType = require('../schematype')
   //, EmbeddedDoc = require('../types').Embedded
   //, Mixed = require('./mixed')
   //, Query = require('../query')
-  , utils = require('../../utils')
+  , utils = require('../utils')
   , isMongooseObject = utils.isMongooseObject
 
 /**

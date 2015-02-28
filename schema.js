@@ -1,4 +1,4 @@
-var utils = require("../utils")
+var utils = require("./utils")
 
 Schema.Types = require('./schema/index');
 Types = Schema.Types;

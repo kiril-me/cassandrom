@@ -20,5 +20,8 @@
   "bugs": {
     "url": "https://github.com/lookify/cassandrom/issues"
   },
-  "homepage": "https://github.com/lookify/cassandrom"
+  "homepage": "https://github.com/lookify/cassandrom",
+  "dependencies": {
+    "cassandra-driver": "^2.0.0"
+  }
 }

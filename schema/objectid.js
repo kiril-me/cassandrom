@@ -2,7 +2,7 @@
 var SchemaType = require('../schematype')
   , CastError = SchemaType.CastError
  // , oid = require('../types/objectid')
-  , utils = require('../../utils')
+  , utils = require('../utils')
   , Document
 
 /**

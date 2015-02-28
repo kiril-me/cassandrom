@@ -4,7 +4,7 @@
 
 var SchemaType = require('../schematype');
 var CastError = SchemaType.CastError;
-var utils = require('../../utils');
+var utils = require('../utils');
 
 /**
  * Date SchemaType constructor.

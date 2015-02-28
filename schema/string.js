@@ -6,7 +6,7 @@
 var SchemaType = require('../schematype')
   , CastError = SchemaType.CastError
   , errorMessages = require('../error').messages
-  , utils = require('../../utils')
+  , utils = require('../utils')
   , Document
 
 /**

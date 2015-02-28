@@ -1,7 +1,7 @@
-var utils = require('../utils');
+var utils = require('./utils');
 var error = require('./error');
 
-var when = require('when');
+//var when = require('when');
 
 function Model(doc, fields) {
   //this.connections = [];
