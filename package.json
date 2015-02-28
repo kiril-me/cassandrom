@@ -1,0 +1,24 @@
+{
+  "name": "cassandrom",
+  "version": "0.0.0",
+  "description": "Cassandra JavaScript ORM",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lookify/cassandrom.git"
+  },
+  "keywords": [
+    "cassandrom",
+    "cassandra",
+    "nodejs"
+  ],
+  "author": "Kiril Menshikov <kiril@lookify.co> (http://www.lookify.co)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lookify/cassandrom/issues"
+  },
+  "homepage": "https://github.com/lookify/cassandrom"
+}
