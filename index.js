@@ -1,5 +1,6 @@
 var Schema = require('./schema');
 var Model = require('./model');
+var Error = require('./error');
 
 var cassandraDriver = require('cassandra-driver');
 var types = cassandraDriver.types;
@@ -72,7 +73,7 @@ Cassandra.prototype.model = function (name, schema, collection, skipInit) {
       this.modelSchemas[name] = schema;
       // this._applyPlugins(schema);
     } else {
-      throw new mongoose.Error.MissingSchemaError(name);
+      throw new Error.MissingSchemaError(name);
     }
   }
 
@@ -102,7 +103,7 @@ Cassandra.prototype.model = function (name, schema, collection, skipInit) {
   if (!schema) {
     schema = this.modelSchemas[name];
     if (!schema) {
-      throw new mongoose.Error.MissingSchemaError(name);
+      throw new Error.MissingSchemaError(name);
     }
   }
 
