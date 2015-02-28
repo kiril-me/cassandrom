@@ -1,26 +1,4 @@
 
-/**
- * The default built-in validator error messages. These may be customized.
- *
- *     // customize within each schema or globally like so
- *     var mongoose = require('mongoose');
- *     mongoose.Error.messages.String.enum  = "Your custom message for {PATH}.";
- *
- * As you might have noticed, error messages support basic templating
- *
- * - `{PATH}` is replaced with the invalid document path
- * - `{VALUE}` is replaced with the invalid value
- * - `{TYPE}` is replaced with the validator type such as "regexp", "min", or "user defined"
- * - `{MIN}` is replaced with the declared min value for the Number.min validator
- * - `{MAX}` is replaced with the declared max value for the Number.max validator
- *
- * Click the "show code" link below to see all defaults.
- *
- * @property messages
- * @receiver MongooseError
- * @api public
- */
-
 var msg = module.exports = exports = {};
 
 msg.general = {};

@@ -53,31 +53,6 @@ SchemaType.prototype.default = function (val) {
   return this.defaultValue;
 };
 
-/**
- * Declares the index options for this schematype.
- *
- * ####Example:
- *
- *     var s = new Schema({ name: { type: String, index: true })
- *     var s = new Schema({ loc: { type: [Number], index: 'hashed' })
- *     var s = new Schema({ loc: { type: [Number], index: '2d', sparse: true })
- *     var s = new Schema({ loc: { type: [Number], index: { type: '2dsphere', sparse: true }})
- *     var s = new Schema({ date: { type: Date, index: { unique: true, expires: '1d' }})
- *     Schema.path('my.path').index(true);
- *     Schema.path('my.date').index({ expires: 60 });
- *     Schema.path('my.path').index({ unique: true, sparse: true });
- *
- * ####NOTE:
- *
- * _Indexes are created in the background by default. Specify `background: false` to override._
- *
- * [Direction doesn't matter for single key indexes](http://www.mongodb.org/display/DOCS/Indexes#Indexes-CompoundKeysIndexes)
- *
- * @param {Object|Boolean|String} options
- * @return {SchemaType} this
- * @api public
- */
-
 SchemaType.prototype.index = function (options) {
   this._index = options;
   utils.expires(this._index);
@@ -134,79 +109,6 @@ SchemaType.prototype.sparse = function (bool) {
   return this;
 };
 
-/**
- * Adds a setter to this schematype.
- *
- * ####Example:
- *
- *     function capitalize (val) {
- *       if ('string' != typeof val) val = '';
- *       return val.charAt(0).toUpperCase() + val.substring(1);
- *     }
- *
- *     // defining within the schema
- *     var s = new Schema({ name: { type: String, set: capitalize }})
- *
- *     // or by retreiving its SchemaType
- *     var s = new Schema({ name: String })
- *     s.path('name').set(capitalize)
- *
- * Setters allow you to transform the data before it gets to the raw mongodb document and is set as a value on an actual key.
- *
- * Suppose you are implementing user registration for a website. Users provide an email and password, which gets saved to mongodb. The email is a string that you will want to normalize to lower case, in order to avoid one email having more than one account -- e.g., otherwise, avenue@q.com can be registered for 2 accounts via avenue@q.com and AvEnUe@Q.CoM.
- *
- * You can set up email lower case normalization easily via a Mongoose setter.
- *
- *     function toLower (v) {
- *       return v.toLowerCase();
- *     }
- *
- *     var UserSchema = new Schema({
- *       email: { type: String, set: toLower }
- *     })
- *
- *     var User = db.model('User', UserSchema)
- *
- *     var user = new User({email: 'AVENUE@Q.COM'})
- *     console.log(user.email); // 'avenue@q.com'
- *
- *     // or
- *     var user = new User
- *     user.email = 'Avenue@Q.com'
- *     console.log(user.email) // 'avenue@q.com'
- *
- * As you can see above, setters allow you to transform the data before it gets to the raw mongodb document and is set as a value on an actual key.
- *
- * _NOTE: we could have also just used the built-in `lowercase: true` SchemaType option instead of defining our own function._
- *
- *     new Schema({ email: { type: String, lowercase: true }})
- *
- * Setters are also passed a second argument, the schematype on which the setter was defined. This allows for tailored behavior based on options passed in the schema.
- *
- *     function inspector (val, schematype) {
- *       if (schematype.options.required) {
- *         return schematype.path + ' is required';
- *       } else {
- *         return val;
- *       }
- *     }
- *
- *     var VirusSchema = new Schema({
- *       name: { type: String, required: true, set: inspector },
- *       taxonomy: { type: String, set: inspector }
- *     })
- *
- *     var Virus = db.model('Virus', VirusSchema);
- *     var v = new Virus({ name: 'Parvoviridae', taxonomy: 'Parvovirinae' });
- *
- *     console.log(v.name);     // name is required
- *     console.log(v.taxonomy); // Parvovirinae
- *
- * @param {Function} fn
- * @return {SchemaType} this
- * @api public
- */
-
 SchemaType.prototype.set = function (fn) {
   if ('function' != typeof fn)
     throw new TypeError('A setter must be a function.');
@@ -214,146 +116,12 @@ SchemaType.prototype.set = function (fn) {
   return this;
 };
 
-/**
- * Adds a getter to this schematype.
- *
- * ####Example:
- *
- *     function dob (val) {
- *       if (!val) return val;
- *       return (val.getMonth() + 1) + "/" + val.getDate() + "/" + val.getFullYear();
- *     }
- *
- *     // defining within the schema
- *     var s = new Schema({ born: { type: Date, get: dob })
- *
- *     // or by retreiving its SchemaType
- *     var s = new Schema({ born: Date })
- *     s.path('born').get(dob)
- *
- * Getters allow you to transform the representation of the data as it travels from the raw mongodb document to the value that you see.
- *
- * Suppose you are storing credit card numbers and you want to hide everything except the last 4 digits to the mongoose user. You can do so by defining a getter in the following way:
- *
- *     function obfuscate (cc) {
- *       return '****-****-****-' + cc.slice(cc.length-4, cc.length);
- *     }
- *
- *     var AccountSchema = new Schema({
- *       creditCardNumber: { type: String, get: obfuscate }
- *     });
- *
- *     var Account = db.model('Account', AccountSchema);
- *
- *     Account.findById(id, function (err, found) {
- *       console.log(found.creditCardNumber); // '****-****-****-1234'
- *     });
- *
- * Getters are also passed a second argument, the schematype on which the getter was defined. This allows for tailored behavior based on options passed in the schema.
- *
- *     function inspector (val, schematype) {
- *       if (schematype.options.required) {
- *         return schematype.path + ' is required';
- *       } else {
- *         return schematype.path + ' is not';
- *       }
- *     }
- *
- *     var VirusSchema = new Schema({
- *       name: { type: String, required: true, get: inspector },
- *       taxonomy: { type: String, get: inspector }
- *     })
- *
- *     var Virus = db.model('Virus', VirusSchema);
- *
- *     Virus.findById(id, function (err, virus) {
- *       console.log(virus.name);     // name is required
- *       console.log(virus.taxonomy); // taxonomy is not
- *     })
- *
- * @param {Function} fn
- * @return {SchemaType} this
- * @api public
- */
-
 SchemaType.prototype.get = function (fn) {
   if ('function' != typeof fn)
     throw new TypeError('A getter must be a function.');
   this.getters.push(fn);
   return this;
 };
-
-/**
- * Adds validator(s) for this document path.
- *
- * Validators always receive the value to validate as their first argument and must return `Boolean`. Returning `false` means validation failed.
- *
- * The error message argument is optional. If not passed, the [default generic error message template](#error_messages_MongooseError-messages) will be used.
- *
- * ####Examples:
- *
- *     // make sure every value is equal to "something"
- *     function validator (val) {
- *       return val == 'something';
- *     }
- *     new Schema({ name: { type: String, validate: validator }});
- *
- *     // with a custom error message
- *
- *     var custom = [validator, 'Uh oh, {PATH} does not equal "something".']
- *     new Schema({ name: { type: String, validate: custom }});
- *
- *     // adding many validators at a time
- *
- *     var many = [
- *         { validator: validator, msg: 'uh oh' }
- *       , { validator: anotherValidator, msg: 'failed' }
- *     ]
- *     new Schema({ name: { type: String, validate: many }});
- *
- *     // or utilizing SchemaType methods directly:
- *
- *     var schema = new Schema({ name: 'string' });
- *     schema.path('name').validate(validator, 'validation of `{PATH}` failed with value `{VALUE}`');
- *
- * ####Error message templates:
- *
- * From the examples above, you may have noticed that error messages support baseic templating. There are a few other template keywords besides `{PATH}` and `{VALUE}` too. To find out more, details are available [here](#error_messages_MongooseError-messages)
- *
- * ####Asynchronous validation:
- *
- * Passing a validator function that receives two arguments tells mongoose that the validator is an asynchronous validator. The first argument passed to the validator function is the value being validated. The second argument is a callback function that must called when you finish validating the value and passed either `true` or `false` to communicate either success or failure respectively.
- *
- *     schema.path('name').validate(function (value, respond) {
- *       doStuff(value, function () {
- *         ...
- *         respond(false); // validation failed
- *       })
-*      }, '{PATH} failed validation.');
-*
- * You might use asynchronous validators to retreive other documents from the database to validate against or to meet other I/O bound validation needs.
- *
- * Validation occurs `pre('save')` or whenever you manually execute [document#validate](#document_Document-validate).
- *
- * If validation fails during `pre('save')` and no callback was passed to receive the error, an `error` event will be emitted on your Models associated db [connection](#connection_Connection), passing the validation error object along.
- *
- *     var conn = mongoose.createConnection(..);
- *     conn.on('error', handleError);
- *
- *     var Product = conn.model('Product', yourSchema);
- *     var dvd = new Product(..);
- *     dvd.save(); // emits error on the `conn` above
- *
- * If you desire handling these errors at the Model level, attach an `error` listener to your Model and the event will instead be emitted there.
- *
- *     // registering an error listener on the Model lets us handle errors more locally
- *     Product.on('error', handleError);
- *
- * @param {RegExp|Function|Object} obj validator
- * @param {String} [errorMsg] optional error message
- * @return {SchemaType} this
- * @api public
- */
 
 SchemaType.prototype.validate = function (obj, message) {
   if ('function' == typeof obj || obj && 'RegExp' === obj.constructor.name) {
@@ -369,8 +137,7 @@ SchemaType.prototype.validate = function (obj, message) {
     arg = arguments[i];
     if (!(arg && 'Object' == arg.constructor.name)) {
       var msg = 'Invalid validator. Received (' + typeof arg + ') '
-        + arg
-        + '. See http://mongoosejs.com/docs/api.html#schematype_SchemaType-validate';
+        + arg;
 
       throw new Error(msg);
     }
