@@ -135,12 +135,6 @@ SchemaArray.prototype.cast = function (value, doc, init) {
       }
     }
 
-    //console.trace('CAST ' + JSON.stringify(this.caster));
-
-    // if (!(value instanceof MongooseArray)) {
-    //   value = new MongooseArray(value, this.path, doc);
-    // }
-
     if (this.caster) {
       try {
         for (var i = 0, l = value.length; i < l; i++) {
@@ -194,8 +188,6 @@ SchemaArray.prototype.castForQuery = function ($conditional, value) {
           v = method.call(caster, v);
         }
 
-// console.log(' array value  ' + JSON.stringify(v));
-
         return v;
       });
 
@@ -205,10 +197,6 @@ SchemaArray.prototype.castForQuery = function ($conditional, value) {
   }
 
   return val;
-
-  // return val && isMongooseObject(val)
-  //   ? val.toObject()
-  //   : val;
 };
 
 /*!

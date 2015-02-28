@@ -3,27 +3,6 @@ var utils = require("./utils")
 Schema.Types = require('./schema/index');
 Types = Schema.Types;
 
-/*
-var cassandra = require('cassandra-driver');
-var client = new cassandra.Client({ contactPoints: [
-    'cassandra-1',
-    'cassandra-2',
-    'cassandra-3'
-  ], keyspace: "lookify"});
-
-client.connect(function(err, result) {
-    console.log('Cassandra connected...');
-});
-
-//
-client.execute('SELECT name, email FROM users where key=?', ['mick-jagger'], function (err, result) {
-  var user = result.rows[0];
-  //The row is an object with the column names as property keys
-  console.log("Hello %s, your email is %s", user.name, user.email);
-});
-
-*/
-
 function Schema (obj, insensitive) {
   if (!(this instanceof Schema)) {
     return new Schema(obj, options);
@@ -72,7 +51,7 @@ Schema.prototype.select = function(modelName, conditions, fields, limit) {
   if(limit) {
     query += " LIMIT " + limit;
   }
-  console.log(query);
+  console.log("[cassandrom] " + query);
   return {
     query: query,
     params: params
@@ -129,8 +108,6 @@ Schema.prototype.insert = function(modelName, obj, fields) {
         names += options.name;
         values += "?";
 
-  // console.log('insert  ' + p + ': ' + obj[p] + ' ' + JSON.stringify(obj));
-
         params.push(path.castForQuery( val ));
       }
     }
@@ -154,10 +131,8 @@ Schema.prototype.selectFields = function(fields) {
   var select = "";
   for(var p in this.tree) {
     var schema = this.paths[p];
-    //select += this.paths[p].options.name;
-    //console.log('schema ' + JSON.stringify( schema ));
+
     if(schema.instance !== "ObjectID") {
-      // console.log(p + ": " + this.paths[p] + this.paths[p].options.name);
       if(list.length > 0) {
         if(list.indexOf(p) >=0 ) {
           if(select.length > 0) {
@@ -268,10 +243,6 @@ Schema.prototype.path = function (path, obj) {
 
   branch[last] = utils.clone(obj);
 
-  // console.log(path + "  add " + JSON.stringify(obj));
-
-  // this.paths[path] = obj;
-
   this.paths[path] = Schema.interpretAsType(this.insensitive, path, obj);
   return this;
 };
@@ -305,26 +276,7 @@ Schema.interpretAsType = function (insensitive, path, obj) {
       ? obj.cast
       : type[0];
 
-      // console.log(JSON.stringify(cast) + '  ' +  JSON.stringify(type));
-
-    // if (cast instanceof Schema) {
-    //   return new Types.DocumentArray(path, cast, obj);
-    // }
-
-    //console.log("typeof -> " + (typeof cast) + "  "  + cast.type + "  " + Object.keys(cast).length);
-
-    // if ('string' == typeof cast) {
-    //   cast = Types[cast.charAt(0).toUpperCase() + cast.substring(1)];
-    // } else if (cast && (!cast.type || cast.type.type)
-    //                 && 'Object' == cast.constructor.name
-    //                 && Object.keys(cast).length) {
-    //   //console.log("DOCUMENTT " + path + " " + JSON.stringify( cast ));
-    //   return new Types.DocumentArray(path, new Schema(cast), obj);
-    // }
-
-
-
-    return new Types.Array(path, cast /* || Types.Mixed */, obj);
+    return new Types.Array(path, cast, obj);
   }
 
   var name = 'string' == typeof type

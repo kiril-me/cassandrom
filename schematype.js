@@ -216,7 +216,6 @@ SchemaType.prototype.required = function (required, message) {
  */
 
 SchemaType.prototype.getDefault = function (scope, init) {
-  //console.trace('get def ' + scope + '  ' + init);
 
   var ret = 'function' === typeof this.defaultValue
     ? this.defaultValue.call(scope)

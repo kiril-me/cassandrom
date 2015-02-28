@@ -30,41 +30,6 @@ function SchemaString (key, options) {
 
 SchemaString.prototype.__proto__ = SchemaType.prototype;
 
-/**
- * Adds an enum validator
- *
- * ####Example:
- *
- *     var states = 'opening open closing closed'.split(' ')
- *     var s = new Schema({ state: { type: String, enum: states }})
- *     var M = db.model('M', s)
- *     var m = new M({ state: 'invalid' })
- *     m.save(function (err) {
- *       console.error(String(err)) // ValidationError: `invalid` is not a valid enum value for path `state`.
- *       m.state = 'open'
- *       m.save(callback) // success
- *     })
- *
- *     // or with custom error messages
- *     var enu = {
- *       values: 'opening open closing closed'.split(' '),
- *       message: 'enum validator failed for path `{PATH}` with value `{VALUE}`'
- *     }
- *     var s = new Schema({ state: { type: String, enum: enu })
- *     var M = db.model('M', s)
- *     var m = new M({ state: 'invalid' })
- *     m.save(function (err) {
- *       console.error(String(err)) // ValidationError: enum validator failed for path `state` with value `invalid`
- *       m.state = 'open'
- *       m.save(callback) // success
- *     })
- *
- * @param {String|Object} [args...] enumeration values
- * @return {SchemaType} this
- * @see Customized Error Messages #error_messages_MongooseError-messages
- * @api public
- */
-
 SchemaString.prototype.enum = function () {
   if (this.enumValidator) {
     this.validators = this.validators.filter(function(v){
@@ -103,20 +68,6 @@ SchemaString.prototype.enum = function () {
   return this;
 };
 
-/**
- * Adds a lowercase setter.
- *
- * ####Example:
- *
- *     var s = new Schema({ email: { type: String, lowercase: true }})
- *     var M = db.model('M', s);
- *     var m = new M({ email: 'SomeEmail@example.COM' });
- *     console.log(m.email) // someemail@example.com
- *
- * @api public
- * @return {SchemaType} this
- */
-
 SchemaString.prototype.lowercase = function () {
   return this.set(function (v, self) {
     if ('string' != typeof v) v = self.cast(v)
@@ -124,20 +75,6 @@ SchemaString.prototype.lowercase = function () {
     return v;
   });
 };
-
-/**
- * Adds an uppercase setter.
- *
- * ####Example:
- *
- *     var s = new Schema({ caps: { type: String, uppercase: true }})
- *     var M = db.model('M', s);
- *     var m = new M({ caps: 'an example' });
- *     console.log(m.caps) // AN EXAMPLE
- *
- * @api public
- * @return {SchemaType} this
- */
 
 SchemaString.prototype.uppercase = function () {
   return this.set(function (v, self) {
@@ -147,24 +84,6 @@ SchemaString.prototype.uppercase = function () {
   });
 };
 
-/**
- * Adds a trim setter.
- *
- * The string value will be trimmed when set.
- *
- * ####Example:
- *
- *     var s = new Schema({ name: { type: String, trim: true }})
- *     var M = db.model('M', s)
- *     var string = ' some name '
- *     console.log(string.length) // 11
- *     var m = new M({ name: string })
- *     console.log(m.name.length) // 9
- *
- * @api public
- * @return {SchemaType} this
- */
-
 SchemaString.prototype.trim = function () {
   return this.set(function (v, self) {
     if ('string' != typeof v) v = self.cast(v)
@@ -172,44 +91,6 @@ SchemaString.prototype.trim = function () {
     return v;
   });
 };
-
-/**
- * Sets a regexp validator.
- *
- * Any value that does not pass `regExp`.test(val) will fail validation.
- *
- * ####Example:
- *
- *     var s = new Schema({ name: { type: String, match: /^a/ }})
- *     var M = db.model('M', s)
- *     var m = new M({ name: 'I am invalid' })
- *     m.validate(function (err) {
- *       console.error(String(err)) // "ValidationError: Path `name` is invalid (I am invalid)."
- *       m.name = 'apples'
- *       m.validate(function (err) {
- *         assert.ok(err) // success
- *       })
- *     })
- *
- *     // using a custom error message
- *     var match = [ /\.html$/, "That file doesn't end in .html ({VALUE})" ];
- *     var s = new Schema({ file: { type: String, match: match }})
- *     var M = db.model('M', s);
- *     var m = new M({ file: 'invalid' });
- *     m.validate(function (err) {
- *       console.log(String(err)) // "ValidationError: That file doesn't end in .html (invalid)"
- *     })
- *
- * Empty strings, `undefined`, and `null` values always pass the match validator. If you require these values, enable the `required` validator also.
- *
- *     var s = new Schema({ name: { type: String, match: /^a/, required: true }})
- *
- * @param {RegExp} regExp regular expression to test against
- * @param {String} [message] optional custom error message
- * @return {SchemaType} this
- * @see Customized Error Messages #error_messages_MongooseError-messages
- * @api public
- */
 
 SchemaString.prototype.match = function match (regExp, message) {
   // yes, we allow multiple match validators

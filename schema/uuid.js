@@ -74,15 +74,7 @@ SchemaUUID.prototype.cast = function (value, doc, init) {
     return value;
   }
 
-// console.log('value -> ' + value + '   ' + typeof value + '  '  + JSON.stringify(value) );
   if ('undefined' !== typeof value) {
-    // // handle documents being passed
-    // if (value._id && 'string' == typeof value._id) {
-    //   return value._id;
-    // }
-
-console.log( JSON.stringify( value ) );
-
     if ('string' == typeof value) {
       return value;//uuidGenerator.parse( value );
     }
