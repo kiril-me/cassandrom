@@ -22,6 +22,7 @@
   },
   "homepage": "https://github.com/lookify/cassandrom",
   "dependencies": {
-    "cassandra-driver": "^2.0.0"
+    "cassandra-driver": "^2.0.0",
+    "node-uuid": "^1.4.2"
   }
 }
