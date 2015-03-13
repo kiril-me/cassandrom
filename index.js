@@ -5,12 +5,14 @@ var Error = require('./error');
 var cassandraDriver = require('cassandra-driver');
 var types = cassandraDriver.types;
 
-function Cassandra() {
+function Cassandrom() {
   this.connections = [];
   this.models = {};
   this.modelSchemas = {};
 
   this.uuid = types.uuid;
+
+  this.Types = require('./types');
 
   this.UUIDType = require('./schema/uuid');
   this.ObjectId = require('./schema/objectid');
@@ -20,14 +22,19 @@ function Cassandra() {
   };
 }
 
-Cassandra.prototype.Schema = Schema;
+Cassandrom.prototype.Schema = Schema;
 
 
-Cassandra.prototype.createConnection = function (options, fn) {
+Cassandrom.prototype.createConnection = function (options, fn) {
   var conn = new cassandraDriver.Client(options);
   this.connections.push(conn);
 
   conn.connect(function(error) {
+    if(error) {
+      console.log('[cassandrom] Connection Error: ' + error);
+    } else {
+      console.log('[cassandrom] Cassandrom successfully connected...');
+    }
     if(fn) {
       fn(error);
     }
@@ -35,17 +42,11 @@ Cassandra.prototype.createConnection = function (options, fn) {
   return conn;
 };
 
-Cassandra.prototype.model = function (name, schema, collection, skipInit) {
-
+Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
   if ('string' == typeof schema) {
     collection = schema;
     schema = false;
   }
-
-
-  // if (utils.isObject(schema) && !(schema instanceof Schema)) {
-  //   schema = new Schema(schema);
-  // }
 
   if ('boolean' === typeof collection) {
     skipInit = collection;
@@ -107,12 +108,6 @@ Cassandra.prototype.model = function (name, schema, collection, skipInit) {
     }
   }
 
-  // Apply relevant "global" options to the schema
-  // if (!('pluralization' in schema.options)) {
-  //  schema.options.pluralization = this.options.pluralization;
-  // }
-
-
   if (!collection) {
     collection = schema.get('collection') || format(name, schema.options);
   }
@@ -134,4 +129,4 @@ Cassandra.prototype.model = function (name, schema, collection, skipInit) {
   return this.models[name] = model;
 }
 
-var cassandra = module.exports = exports = new Cassandra;
+var cassandra = module.exports = exports = new Cassandrom;

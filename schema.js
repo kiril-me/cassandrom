@@ -21,7 +21,6 @@ function Schema (obj, insensitive) {
   this.insensitive = insensitive;
 
   if (obj) {
-
     this.add(obj);
   }
 }
@@ -248,8 +247,9 @@ Schema.prototype.path = function (path, obj) {
 };
 
 Schema.interpretAsType = function (insensitive, path, obj) {
-  if (obj.constructor && obj.constructor.name != 'Object')
+  if (obj.constructor && obj.constructor.name != 'Object') {
     obj = { type: obj };
+  }
 
   // Get the type making sure to allow keys named "type"
   // and default to mixed if not specified.
@@ -270,13 +270,13 @@ Schema.interpretAsType = function (insensitive, path, obj) {
     }
   }
 
-  if (Array.isArray(type) || Array == type || 'array' == type) {
+  if (Array.isArray(type) || Array == type) {
     // if it was specified through { type } look for `cast`
-    var cast = (Array == type || 'array' == type)
+    var cast = Array == type
       ? obj.cast
       : type[0];
-
-    return new Types.Array(path, cast, obj);
+// console.log("path " + path + " cast " + JSON.stringify(cast) + " obj "+ JSON.stringify(obj));
+    return new Types.Collection(path, cast, obj);
   }
 
   var name = 'string' == typeof type

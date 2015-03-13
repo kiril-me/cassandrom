@@ -4,6 +4,8 @@ var error = require('./error');
 //var when = require('when');
 
 function Model(doc, fields) {
+
+  console.log('model: ' + JSON.stringify(doc));
   //this.connections = [];
   //this.plugins = [];
   //this.models = {};
@@ -570,6 +572,7 @@ Model.__escapeQuery = function(obj) {
 // };
 
 Model.find = function find (conditions, fields, limit, callback) {
+  // console.log('[cassandrom] find');
   if ('function' == typeof limit) {
     callback = limit;
     limit = null;
@@ -589,6 +592,7 @@ Model.find = function find (conditions, fields, limit, callback) {
 }
 
 Model.findOne = function findOne (conditions, fields, callback) {
+  // console.log('[cassandrom] findOne');
   if ('function' == typeof fields) {
     callback = fields;
     fields = null;
@@ -602,10 +606,9 @@ Model.findOne = function findOne (conditions, fields, callback) {
 
 Model.$__result = function(callback, one) {
   var self = this;
-
-  //console.log("scheme 1 " + this.username + "  " + (model === self));
   return function(error, result) {
     if(error) {
+      console.log('[cassandrom] Query error: ' + error);
       callback(error, null);
     } else {
       var data = self.$__parseData(self, result, one);
@@ -615,20 +618,11 @@ Model.$__result = function(callback, one) {
 };
 
 Model.$__parseData = function(model, data, one) {
-  console.log('one ' + one);
-  // var meta = "";
-  // if(data.meta) {
-
-  // }
   var list = [];
   if(data.rows && data.rows.length > 0) {
-
     var i = 0, obj, p, size = one ? 1 : data.rows.length;
     for(; i < size; i++) {
-      //console.log("Data: " + JSON.stringify(data.rows[i]));
       obj = new model( data.rows[i] );
-      //console.log("Data: " + JSON.stringify(obj));
-
       list.push( obj );
     }
   }
@@ -652,23 +646,8 @@ Model.prototype.$__setModelName = function (modelName) {
 }
 
 Model.compile = function compile (name, schema, collectionName, connection, base) {
-
-  // var versioningEnabled = false !== schema.options.versionKey;
-
-  // if (versioningEnabled && !schema.paths[schema.options.versionKey]) {
-  //   // add versioning to top level documents only
-  //   var o = {};
-  //   o[schema.options.versionKey] = Number;
-  //   schema.add(o);
-  // }
-
-
-
   // generate new class
   function model (doc, fields) {
-    //console.log('model created ' + this.username);
-    //console.log('name ' + this.model);
-
     if (!(this instanceof model)) {
       return new model(doc, fields);
     }
@@ -679,7 +658,6 @@ Model.compile = function compile (name, schema, collectionName, connection, base
 
   model.__proto__ = Model;
   model.prototype.__proto__ = Model.prototype;
-  // model.model = Model.prototype.model;
   model.db = model.prototype.db = connection;
 
   model.prototype.$__setSchema(schema);
@@ -687,21 +665,6 @@ Model.compile = function compile (name, schema, collectionName, connection, base
 
   model.prototype.$__setModelName(name);
   model.modelName = model.prototype.modelName;
-
-  //model.discriminators = model.prototype.discriminators = undefined;
-
-
-/*
-  var collectionOptions = {
-      bufferCommands: schema.options.bufferCommands
-    , capped: schema.options.capped
-  };
-
-  model.prototype.collection = connection.collection(
-      collectionName
-    , collectionOptions
-  );
-*/
 
   // apply methods
   for (var i in schema.methods) {
@@ -712,10 +675,7 @@ Model.compile = function compile (name, schema, collectionName, connection, base
   for (var i in schema.statics) {
     model[i] = schema.statics[i];
   }
-
-  //model.schema = model.prototype.schema;
   model.options = model.prototype.options;
-  // model.collection = model.prototype.collection;
 
   return model;
 };

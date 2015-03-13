@@ -9,7 +9,7 @@ exports.Bool = exports.Boolean;
 
 exports.Date = require('./date');
 
-exports.Array = require('./array');
+exports.Collection = require('./collection');
 
 exports.SchemaUUID = require('./uuid');
 
