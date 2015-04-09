@@ -91,3 +91,10 @@ schema.statics.findById = function(id, callback) {
 
 # Cassandra Driver access
 DataStax [nodejs-driver](https://github.com/datastax/nodejs-driver) for Apache Cassandra were used.
+
+# Creators
+
+_Kiril Menshikov_ - https://twitter.com/kiril
+
+# Copyright and license
+Code and documentation copyright 2015 [Lookify.co](http://www.lookify.co) Code released under the Apache 2.0 license.
