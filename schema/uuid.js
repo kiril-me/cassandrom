@@ -56,7 +56,8 @@ SchemaUUID.prototype.cast = function (value, doc, init) {
     if ('string' == typeof value) {
       return value;
     } else if (Buffer.isBuffer(value) || !utils.isObject(value)) {
-      throw new CastError('string', value, this.path);
+      console.log('Value type 1 ' + (typeof value));
+      throw new CastError('UUID', value, this.path);
     }
 
     // Handle the case where user directly sets a populated
@@ -80,8 +81,8 @@ SchemaUUID.prototype.cast = function (value, doc, init) {
     }
   }
 
-
-  throw new CastError('string', value, this.path);
+  console.log('Value type 2 ' + (typeof value));
+  throw new CastError('UUID', value, this.path);
 };
 
 /*!
