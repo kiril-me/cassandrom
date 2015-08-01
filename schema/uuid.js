@@ -7,6 +7,9 @@ var SchemaType = require('../schematype')
   , Document
   , VALIDATE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+var cassandraDriver = require('cassandra-driver');
+var Uuid = cassandraDriver.types.uuid;
+
 
 function SchemaUUID (key, options) {
   SchemaType.call(this, key, options, 'UUID');
@@ -53,10 +56,11 @@ SchemaUUID.prototype.cast = function (value, doc, init) {
     }
 
     // setting a populated path
-    if ('string' == typeof value) {
+    if (value instanceof Uuid) {
       return value;
+    } else if ('string' == typeof value) {
+      return Uuid.fromString(value);
     } else if (Buffer.isBuffer(value) || !utils.isObject(value)) {
-      console.log('Value type 1 ' + (typeof value));
       throw new CastError('UUID', value, this.path);
     }
 
@@ -76,12 +80,12 @@ SchemaUUID.prototype.cast = function (value, doc, init) {
   }
 
   if ('undefined' !== typeof value) {
-    if ('string' == typeof value) {
-      return value;//uuidGenerator.parse( value );
+    if(value instanceof Uuid) {
+      return value;
+    } else if ('string' == typeof value) {
+      return Uuid.fromString(value);
     }
   }
-
-  console.log('Value type 2 ' + (typeof value));
   throw new CastError('UUID', value, this.path);
 };
 
