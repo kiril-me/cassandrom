@@ -8,7 +8,7 @@ var SchemaType = require('../schematype')
   , VALIDATE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 var cassandraDriver = require('cassandra-driver');
-var Uuid = cassandraDriver.types.uuid;
+var Uuid = cassandraDriver.types.Uuid;
 
 
 function SchemaUUID (key, options) {
@@ -83,7 +83,7 @@ SchemaUUID.prototype.cast = function (value, doc, init) {
     if(value instanceof Uuid) {
       return value;
     } else if ('string' == typeof value) {
-      return Uuid.fromString(value);
+      return value;
     }
   }
   throw new CastError('UUID', value, this.path);
