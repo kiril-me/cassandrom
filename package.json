@@ -1,6 +1,6 @@
 {
   "name": "cassandrom",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "Cassandra JavaScript ORM",
   "main": "index.js",
   "scripts": {
@@ -16,13 +16,13 @@
     "nodejs"
   ],
   "author": "Kiril Menshikov <kiril@lookify.co> (http://www.lookify.co)",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/lookify/cassandrom/issues"
   },
   "homepage": "https://github.com/lookify/cassandrom",
   "dependencies": {
-    "cassandra-driver": "^2.0.0",
-    "node-uuid": "^1.4.2"
+    "cassandra-driver": "^3.0.0",
+    "node-uuid": "^1.4.7"
   }
 }

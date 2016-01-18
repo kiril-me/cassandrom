@@ -16,6 +16,7 @@ function Cassandrom() {
 
   this.UUIDType = require('./schema/uuid');
   this.ObjectId = require('./schema/objectid');
+  this.ListId = require('./schema/listid');
 
   this.options = {
 
