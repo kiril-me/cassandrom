@@ -2,6 +2,7 @@ var utils = require("./utils")
 
 var error = require("./error");
 var ValidationError = error.ValidatorError;
+var ValidatorError = error.ValidationError;
 
 Schema.Types = require('./schema/index');
 Types = Schema.Types;
