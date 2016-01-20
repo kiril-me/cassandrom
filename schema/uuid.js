@@ -28,6 +28,8 @@ SchemaUUID.prototype.__proto__ = SchemaType.prototype;
 SchemaUUID.prototype.checkRequired = function checkRequired (value, doc) {
   if (SchemaType._isRef(this, value, doc, true)) {
     return null != value;
+  } else if(value instanceof Uuid) {
+    return true;
   } else {
     return (value instanceof String || typeof value == 'string') && value.length && VALIDATE.test(value);
   }

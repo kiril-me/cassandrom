@@ -48,6 +48,31 @@ function SchemaCollection (key, cast, options) {
   }
 }
 
+SchemaCollection.prototype.cast = function (value, doc, init) {
+  console.log('collection cast');
+  return value;
+};
+
+/**
+ * Casts contents for queries.
+ *
+ * @param {String} $conditional
+ * @param {any} [val]
+ * @api private
+ */
+
+SchemaCollection.prototype.castForQuery = function ($conditional, val) {
+  var handler;
+  if (arguments.length === 2) {
+    handler = this.$conditionalHandlers[$conditional];
+    if (!handler)
+      throw new Error("Can't use " + $conditional + " with String.");
+    return handler.call(this, val);
+  } else {
+    return this.cast($conditional);
+  }
+};
+
 SchemaCollection.prototype.__proto__ = SchemaType.prototype;
 
 
