@@ -87,5 +87,9 @@ function cloneObject (obj, options) {
     : ret;
 };
 
-
+exports.each = function(arr, fn) {
+  for (var i = 0; i < arr.length; ++i) {
+    fn(arr[i]);
+  }
+};
 

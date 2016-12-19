@@ -1,3 +1,5 @@
+var EventEmitter = require('events').EventEmitter;
+
 var utils = require("./utils")
 
 var error = require("./error");
@@ -7,9 +9,11 @@ var ValidatorError = error.ValidationError;
 Schema.Types = require('./schema/index');
 Types = Schema.Types;
 
-function Schema (obj, insensitive) {
+var VirtualType = require('./virtualtype');
+
+function Schema (obj, options) {
   if (!(this instanceof Schema)) {
-    return new Schema(obj, options);
+    return new Schema(obj, insensitive);
   }
 
   this.nested = {};
@@ -17,17 +21,33 @@ function Schema (obj, insensitive) {
   this.subpaths = {};
   this.tree = {};
 
+  this.virtuals = {};
+
   this.methods = {};
   this.statics = {};
 
-  this.options = {};
+  this.callQueue = [];
 
-  this.insensitive = insensitive;
+  if(options === true) {
+    this.options = {
+      insensitive: true
+    };
+  } else if(options) {
+    this.options = options;
+  } else {
+    this.options = {};
+  }
+
+  this.insensitive = !!this.options.insensitive;
 
   if (obj) {
     this.add(obj);
   }
 }
+
+Schema.prototype = Object.create(EventEmitter.prototype);
+Schema.prototype.constructor = Schema;
+Schema.prototype.instanceOfSchema = true;
 
 Schema.prototype.tree;
 Schema.prototype.paths;
@@ -407,6 +427,84 @@ Schema.prototype.method = function (name, fn) {
   else
     this.methods[name] = fn;
   return this;
+};
+
+Schema.prototype.virtual = function(name, options) {
+  var virtuals = this.virtuals;
+  var parts = name.split('.');
+
+  if (this.pathType(name) === 'real') {
+    throw new Error('Virtual path "' + name + '"' +
+      ' conflicts with a real path in the schema');
+  }
+
+  virtuals[name] = parts.reduce(function(mem, part, i) {
+    mem[part] || (mem[part] = (i === parts.length - 1)
+        ? new VirtualType(options, name)
+        : {});
+    return mem[part];
+  }, this.tree);
+
+  return virtuals[name];
+};
+
+Schema.prototype.pathType = function(path) {
+  if (path in this.paths) {
+    return 'real';
+  }
+  if (path in this.virtuals) {
+    return 'virtual';
+  }
+  if (path in this.nested) {
+    return 'nested';
+  }
+  if (path in this.subpaths) {
+    return 'real';
+  }
+
+  return 'adhocOrUndefined';
+};
+
+Schema.prototype.pre = function() {
+  // var name = arguments[0];
+  // if (IS_KAREEM_HOOK[name]) {
+  //   this.s.hooks.pre.apply(this.s.hooks, arguments);
+  //   return this;
+  // }
+  return this.queue('pre', arguments);
+};
+
+Schema.prototype.post = function(method, fn) {
+  // assuming that all callbacks with arity < 2 are synchronous post hooks
+  if (fn.length < 2) {
+    return this.queue('on', [arguments[0], function(doc) {
+      return fn.call(doc, doc);
+    }]);
+  }
+
+  // if (fn.length === 3) {
+  //   this.s.hooks.post(method + ':error', fn);
+  //   return this;
+  // }
+
+  return this.queue('post', [arguments[0], function(next) {
+    // wrap original function so that the callback goes last,
+    // for compatibility with old code that is using synchronous post hooks
+    var _this = this;
+    var args = Array.prototype.slice.call(arguments, 1);
+    fn.call(this, this, function(err) {
+      return next.apply(_this, [err].concat(args));
+    });
+  }]);
+};
+
+Schema.prototype.queue = function(name, args) {
+  this.callQueue.push([name, args]);
+  return this;
+};
+
+Schema.prototype.get = function(key) {
+  return this.options[key];
 };
 
 module.exports = exports = Schema;

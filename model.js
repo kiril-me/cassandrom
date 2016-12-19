@@ -1,6 +1,8 @@
 var utils = require('./utils');
 var error = require('./error');
 
+var EventEmitter = require('events').EventEmitter;
+
 //var when = require('when');
 
 function Model(doc, fields) {
@@ -10,6 +12,10 @@ function Model(doc, fields) {
   //this.plugins = [];
   //this.models = {};
   //this.modelSchemas = {};
+
+  this.$__ = {
+    emitter: new EventEmitter()
+  };
 
   this.options = {
 
@@ -27,6 +33,17 @@ function Model(doc, fields) {
   }
 }
 
+utils.each(
+  ['on', 'once', 'emit', 'listeners', 'removeListener', 'setMaxListeners',
+    'removeAllListeners', 'addListener'],
+  function(emitterFn) {
+    Model.prototype[emitterFn] = function() {
+      return this.$__.emitter[emitterFn].apply(this.$__.emitter, arguments);
+    };
+});
+
+Model.prototype.constructor = Model;
+
 Model.prototype.schema;
 
 Model.prototype.modelName;
@@ -38,8 +55,15 @@ Model.init = function init () {
   //   this.ensureIndexes();
   // }
 
-  // this.schema.emit('init', this);
+  this.schema.emit('init', this);
+  //this.emit('init', this);
+
+  return this;
 };
+
+for (var i in EventEmitter.prototype) {
+  Model[i] = EventEmitter.prototype[i];
+}
 
 Model.prototype.$__normalize = function(obj) {
   var paths = Object.keys(this.schema.paths),
@@ -647,17 +671,23 @@ Model.prototype.$__setModelName = function (modelName) {
 
 Model.compile = function compile (name, schema, collectionName, connection, base) {
   // generate new class
-  function model (doc, fields) {
+  function model (doc, fields, skipId) {
+    console.log('model ' + this);
     if (!(this instanceof model)) {
-      return new model(doc, fields);
+      return new model(doc, fields, skipId);
     }
-    Model.call(this, doc, fields);
+    Model.call(this, doc, fields, skipId);
   };
 
   model.base = base; // Model
 
-  model.__proto__ = Model;
-  model.prototype.__proto__ = Model.prototype;
+
+  if (!(model.prototype instanceof Model)) {
+    model.__proto__ = Model;
+    model.prototype.__proto__ = Model.prototype;
+  }
+
+  model.model = Model.prototype.model;
   model.db = model.prototype.db = connection;
 
   model.prototype.$__setSchema(schema);
@@ -666,15 +696,10 @@ Model.compile = function compile (name, schema, collectionName, connection, base
   model.prototype.$__setModelName(name);
   model.modelName = model.prototype.modelName;
 
-  // apply methods
-  for (var i in schema.methods) {
-    model.prototype[i] = schema.methods[i];
-  }
+  // apply methods and statics
+  applyMethods(model, schema);
+  applyStatics(model, schema);
 
-  // apply statics
-  for (var i in schema.statics) {
-    model[i] = schema.statics[i];
-  }
   model.options = model.prototype.options;
 
   return model;
@@ -938,5 +963,44 @@ function applyGetters (self, json, type, options) {
   return json;
 }
 
+
+/*!
+ * Register methods for this model
+ *
+ * @param {Model} model
+ * @param {Schema} schema
+ */
+var applyMethods = function(model, schema) {
+  function apply(method, schema) {
+    Object.defineProperty(model.prototype, method, {
+      get: function() {
+        var h = {};
+        for (var k in schema.methods[method]) {
+          h[k] = schema.methods[method][k].bind(this);
+        }
+        return h;
+      },
+      configurable: true
+    });
+  }
+  for (var method in schema.methods) {
+    if (typeof schema.methods[method] === 'function') {
+      model.prototype[method] = schema.methods[method];
+    } else {
+      apply(method, schema);
+    }
+  }
+};
+
+/*!
+ * Register statics for this model
+ * @param {Model} model
+ * @param {Schema} schema
+ */
+var applyStatics = function(model, schema) {
+  for (var i in schema.statics) {
+    model[i] = schema.statics[i];
+  }
+};
 
 module.exports = exports = Model;

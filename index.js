@@ -25,21 +25,35 @@ function Cassandrom() {
 
 Cassandrom.prototype.Schema = Schema;
 
-
-Cassandrom.prototype.createConnection = function (options, fn) {
+Cassandrom.prototype.connect = Cassandrom.prototype.createConnection = function (options, fn) {
   var conn = new cassandraDriver.Client(options);
   this.connections.push(conn);
+
+  conn._events = {
+    error: function() { },
+    open: function() { },
+  };
+
+  conn.once = function(name, fn) {
+    conn._events[name] = fn;
+    return this;
+  };
 
   conn.connect(function(error) {
     if(error) {
       console.log('[cassandrom] Connection Error: ' + error);
+      conn._events['error'](error);
     } else {
       console.log('[cassandrom] Cassandrom successfully connected...');
+      conn._events['open']();
     }
     if(fn) {
       fn(error);
     }
   });
+
+  this.connection = conn;
+
   return conn;
 };
 

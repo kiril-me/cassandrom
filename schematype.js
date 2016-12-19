@@ -55,7 +55,6 @@ SchemaType.prototype.default = function (val) {
 
 SchemaType.prototype.index = function (options) {
   this._index = options;
-  utils.expires(this._index);
   return this;
 };
 
