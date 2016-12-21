@@ -245,7 +245,7 @@ SchemaType.prototype.applySetters = function (value, scope, init, priorVal) {
 
   var v = value
     , setters = this.setters
-    , len = setters.length
+    , len = setters.length;
 
   if (!len) {
     if (null === v || undefined === v) return v;

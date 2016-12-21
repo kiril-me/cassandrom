@@ -10,6 +10,7 @@ var SchemaType = require('../schematype')
   };
 
 function SchemaCollection (key, cast, options) {
+  console.log('collection ', key, cast, options);
   if (cast) {
     var castOptions = {};
 

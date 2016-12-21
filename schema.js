@@ -22,6 +22,7 @@ function Schema (obj, options) {
   this.tree = {};
 
   this.virtuals = {};
+  this.singleNestedPaths = {};
 
   this.methods = {};
   this.statics = {};
@@ -81,23 +82,99 @@ Schema.prototype.select = function(modelName, conditions, fields, limit) {
   };
 };
 
+Schema.prototype._insertValue = function(path, obj, name, fields, params, validationError) {
+  var value = obj[name];
+  var namePath =  this.paths[path];
+  if(namePath) {
+    namePath.doValidate(value, function (err) {
+      if(err) {
+        //gotError = true;
+        if (!validationError) {
+          validationError = new ValidationError(obj);
+        }
+        var validatorError = new ValidatorError(p, err, 'user defined', val)
+        validationError.errors[p] = validatorError;
+      }
+    }, obj);
+    var options = namePath.options;
+    if(fields.length > 0) {
+      if(fields.indexOf(path) >= 0 ) {
+        params[options.name] = namePath.castForQuery( value );
+      }
+    } else {
+      console.log('cast ', path);
+      params[options.name] = namePath.castForQuery( value );
+    }
+  } else if(value && path in this.nested) {
+    for(var subname in this.tree[path]) {
+      validationError = this._insertValue(name + '.' + subname, value, subname, fields, params, validationError);
+    }
+  } else {
+    console.log('ups ', path, value);
+  }
+  return validationError;
+};
+
 Schema.prototype.insert = function(modelName, obj, fields) {
   var list =[];
   if(fields && Array.isArray(fields)) {
     list = fields;
   }
 
-  var names = "";
-  var values = "";
-  var params = [];
+  var paramsMap = {};
   var validationError;
 
   for(var p in this.tree) {
-    var path = this.paths[p];
+    validationError = this._insertValue(p, obj, p, list, paramsMap, validationError);
+  }
+
+  var query =  "INSERT INTO " + modelName + " (";
+  var values = '';
+  var params = [];
+  for(var name in paramsMap) {
+    if(params.length === 0) {
+      query += name.replace('\.', '_');
+      values += '?';
+      params.push(paramsMap[name]);
+    } else {
+      query += ', ' + name.replace('\.', '_');
+      values += ', ?';
+      params.push(paramsMap[name]);
+    }
+  }
+  query += ') VALUES (' + values + ')';
+
+console.log(query);
+
+/*
+console.log('--------');
+for(var p in this.tree) {
+  console.log(p);
+}
+
+console.log('--------');
+for(var p in this.paths) {
+  console.log(p);
+}
+
+console.log('--------');
+for(var p in this.subpaths) {
+  console.log(p);
+}
+
+
+  for(var p in this.tree) {
+
+    // this._insertValue(p, obj, list, params);
+
     var val = obj[p];
+    var path =  this.path(p); // this.paths[p];
+    // if(!path) {
+    // }
 
     //if (schematype.options.required) {
     //var gotError = false;
+// console.log('modelName', modelName, 'path', path, 'name', p, 'value', val);
 
     path.doValidate(val, function (err) {
       if(err) {
@@ -135,8 +212,8 @@ Schema.prototype.insert = function(modelName, obj, fields) {
       }
     }
   }
+*/
 
-  var query =  "INSERT INTO " + modelName + " (" + names + ") VALUES (" + values + ")";
 
   return {
     query: query,
@@ -145,30 +222,52 @@ Schema.prototype.insert = function(modelName, obj, fields) {
   };
 };
 
+
+Schema.prototype._select = function(name) {
+  var schema = this.paths[name];
+  var select = null;
+  if(schema) {
+    if(schema.instance !== "ObjectID") {
+      select = this.paths[name].options.name;
+    }
+  } else if(name in this.nested) {
+    select = '';
+    var field;
+    for(var subname in this.tree[name]) {
+      field = this._select(name + '.' + subname);
+      if(field !== null) {
+        if(select.length > 0) {
+          select += ', ';
+        }
+        select += field.replace('\.', '_');
+      }
+    }
+  }
+  return select;
+};
+
 Schema.prototype.selectFields = function(fields) {
   var list =[];
   if(fields && Array.isArray(fields)) {
     list = fields;
   }
 
-  var select = "";
+  var select = '', fieldSelect;
   for(var p in this.tree) {
-    var schema = this.paths[p];
-
-    if(schema.instance !== "ObjectID") {
-      if(list.length > 0) {
-        if(list.indexOf(p) >=0 ) {
-          if(select.length > 0) {
-            select += ", ";
-          }
-          select += this.paths[p].options.name;
+    fieldSelect = null;
+    if(list.length > 0) {
+        if(list.indexOf(p) >= 0) {
+          fieldSelect = this._select(p);
         }
-      } else {
-        if(select.length > 0) {
-          select += ", ";
-        }
-        select += this.paths[p].options.name;
+    } else {
+      fieldSelect = this._select(p);
+    }
+    if(fieldSelect !== null) {
+      console.log(p + ': ' + fieldSelect);
+      if(select.length > 0) {
+        select += ", ";
       }
+      select += fieldSelect;
     }
   }
 
@@ -226,14 +325,19 @@ reserved._events = // EventEmitter
 reserved._pres = reserved._posts = 1 // hooks.js
 
 Schema.prototype.path = function (path, obj) {
-
   // get path
   if (obj == undefined) {
     if (this.paths[path]) {
       return this.paths[path];
     }
 
-    // if (this.subpaths[path]) return this.subpaths[path];
+    if (this.subpaths[path]) {
+      return this.subpaths[path];
+    }
+
+    if (this.singleNestedPaths[path]) {
+      return this.singleNestedPaths[path];
+    }
 
     // subpaths?
     return /\.\d+\.?.*$/.test(path)
@@ -252,8 +356,10 @@ Schema.prototype.path = function (path, obj) {
     , branch = this.tree;
 
   subpaths.forEach(function(sub, i) {
-    if (!branch[sub]) branch[sub] = {};
-    if ('object' != typeof branch[sub]) {
+    if (!branch[sub]) {
+      branch[sub] = {};
+    }
+    if ('object' !== typeof branch[sub]) {
       var msg = 'Cannot set nested path `' + path + '`. '
               + 'Parent path `'
               + subpaths.slice(0, i).concat([sub]).join('.')
@@ -266,11 +372,31 @@ Schema.prototype.path = function (path, obj) {
 
   branch[last] = utils.clone(obj);
 
+console.log('create path', path);
+
   this.paths[path] = Schema.interpretAsType(this.insensitive, path, obj);
+
+  // if (this.paths[path].$isSingleNested) {
+  //   for (var key in this.paths[path].schema.paths) {
+  //     this.singleNestedPaths[path + '.' + key] =
+  //         this.paths[path].schema.paths[key];
+  //   }
+  //   for (key in this.paths[path].schema.singleNestedPaths) {
+  //     this.singleNestedPaths[path + '.' + key] =
+  //         this.paths[path].schema.singleNestedPaths[key];
+  //   }
+
+  //   this.childSchemas.push(this.paths[path].schema);
+  // } else if (this.paths[path].$isMongooseDocumentArray) {
+  //   this.childSchemas.push(this.paths[path].schema);
+  // }
+
   return this;
 };
 
 Schema.interpretAsType = function (insensitive, path, obj) {
+
+
   if (obj.constructor && obj.constructor.name != 'Object') {
     obj = { type: obj };
   }
@@ -281,6 +407,8 @@ Schema.interpretAsType = function (insensitive, path, obj) {
   var type = obj.type && !obj.type.type
     ? obj.type
     : {};
+
+  // console.log('interpretAsType', path, 'type', type);
 
   // if ('Object' == type.constructor.name || 'mixed' == type) {
   //   return new Types.Mixed(path, obj);
@@ -316,6 +444,10 @@ Schema.interpretAsType = function (insensitive, path, obj) {
         '`\n  Did you try nesting Schemas? ' +
         'You can only nest using refs or arrays.');
   }
+
+// if(name === 'name') {
+//  console.log('inter path', path, ' name ', name);
+// }
 
   return new Types[name](path, obj);
 };
@@ -459,6 +591,9 @@ Schema.prototype.pathType = function(path) {
     return 'nested';
   }
   if (path in this.subpaths) {
+    return 'real';
+  }
+  if (path in this.singleNestedPaths) {
     return 'real';
   }
 

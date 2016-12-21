@@ -1,13 +1,11 @@
 var utils = require('./utils');
 var error = require('./error');
-
+var Promise = require('./promise');
 var EventEmitter = require('events').EventEmitter;
 
 //var when = require('when');
 
 function Model(doc, fields) {
-
-  console.log('model: ' + JSON.stringify(doc));
   //this.connections = [];
   //this.plugins = [];
   //this.models = {};
@@ -48,7 +46,7 @@ Model.prototype.schema;
 
 Model.prototype.modelName;
 
-Model.prototype.db;
+// Model.prototype.db;
 
 Model.init = function init () {
   // if (this.schema.options.autoIndex) {
@@ -191,7 +189,7 @@ Model.prototype.save = function save (fields, fn) {
     if(insert.error) {
       fn(insert.error);
     } else {
-      this.db.execute(insert.query, insert.params, {prepare: true}, function(error, status) {
+      this.base.execute(insert.query, insert.params, {prepare: true}, function(error, status) {
         if(error) {
           fn(error);
         } else {
@@ -372,6 +370,7 @@ Model.prototype.set = function (path, val, type, options) {
     return this;
   }
 
+// console.log('set ' + path + ': ' + val + ', ' + priorVal, schema);
   var self = this;
   var shouldSet = this.$__try(function(){
     val = schema.applySetters(val, self, false, priorVal);
@@ -398,7 +397,7 @@ Model.prototype.$__try = function (fn, scope) {
 
 
 Model.prototype.$__error = function(error) {
-  console.log("Error: " + error);
+  console.error("Error: " + error);
 };
 // Model.prototype.$__shouldModify = function (
 //     pathToMark, path, constructing, parts, schema, val, priorVal) {
@@ -611,8 +610,63 @@ Model.find = function find (conditions, fields, limit, callback) {
     limit = null;
   }
 
-  var select = this.schema.select(this.modelName, conditions, fields, limit);
-  this.db.execute(select.query, select.params, {prepare: true}, this.$__result(callback, limit === 1));
+  var self = this;
+  var _results;
+  var promise = new Promise(function(resolve, reject) {
+    var select = self.schema.select(self.modelName, conditions, fields, limit);
+    if(!select) {
+      resolve();
+      return;
+    }
+    self.base.execute(select.query, select.params, {prepare: true}, function(error, result) {
+      if (error) {
+        console.log('[cassandrom] Query error: ' + error);
+        reject(error);
+        return;
+      }
+      var data = self.$__parseData(self, result, limit === 1);
+      _results = [error, data];
+      resolve(data);
+    });
+  });
+
+  if (callback) {
+    promise.then(
+      function() {
+        callback.apply(null, _results);
+      },
+      function(error) {
+        callback(error);
+      }).
+      catch(function(error) {
+        setImmediate(function() {
+          self.model.emit('error', error);
+        });
+      });
+  }
+
+promise.exec = function(op, callback) {
+  if (typeof op === 'function') {
+    callback = op;
+  }
+
+  this.then(
+    function() {
+      callback.apply(null, _results);
+    },
+    function(error) {
+      callback(error);
+    }).
+    catch(function(error) {
+      setImmediate(function() {
+        self.model.emit('error', error);
+      });
+  });
+};
+
+  // this.base.execute(select.query, select.params, {prepare: true}, this.$__result(callback, limit === 1));
+
+  return promise;
 }
 
 Model.findOne = function findOne (conditions, fields, callback) {
@@ -625,19 +679,19 @@ Model.findOne = function findOne (conditions, fields, callback) {
     conditions = {};
     fields = null;
   }
-  this.find(conditions, fields, 1, callback);
+  return this.find(conditions, fields, 1, callback);
 };
 
 Model.$__result = function(callback, one) {
   var self = this;
   return function(error, result) {
+    var data = null;
     if(error) {
       console.log('[cassandrom] Query error: ' + error);
-      callback(error, null);
     } else {
-      var data = self.$__parseData(self, result, one);
-      callback(null, data);
+      data = self.$__parseData(self, result, one);
     }
+    callback(error, data);
   };
 };
 
@@ -669,18 +723,16 @@ Model.prototype.$__setModelName = function (modelName) {
   this.modelName = modelName;
 }
 
-Model.compile = function compile (name, schema, collectionName, connection, base) {
+Model.compile = function compile (name, schema, collectionName, base) {
   // generate new class
   function model (doc, fields, skipId) {
-    console.log('model ' + this);
     if (!(this instanceof model)) {
       return new model(doc, fields, skipId);
     }
     Model.call(this, doc, fields, skipId);
   };
 
-  model.base = base; // Model
-
+  model.base = model.prototype.base = base;
 
   if (!(model.prototype instanceof Model)) {
     model.__proto__ = Model;
@@ -688,7 +740,7 @@ Model.compile = function compile (name, schema, collectionName, connection, base
   }
 
   model.model = Model.prototype.model;
-  model.db = model.prototype.db = connection;
+  // model.db = model.prototype.db = connection;
 
   model.prototype.$__setSchema(schema);
   model.schema = model.prototype.schema;
@@ -803,7 +855,7 @@ Model.prototype.setValue = function (path, val) {
 }
 
 Model.prototype.get = function (path, type) {
-  //console.log('get ' + path + '  ' + type);
+  //console.log('model get ' + path + '  ' + type);
   // var adhocs;
   // if (type) {
   //   adhocs = this.$__.adhocPaths || (this.$__.adhocPaths = {});
@@ -905,6 +957,17 @@ Model.prototype.toJSON = function (options) {
   return this.toObject(options);
 };
 
+
+function getOwnPropertyDescriptors(object) {
+  var result = {};
+
+  Object.getOwnPropertyNames(object).forEach(function(key) {
+    result[key] = Object.getOwnPropertyDescriptor(object, key);
+    result[key].enumerable = true;
+  });
+
+  return result;
+}
 
 function minimize (obj) {
   var keys = Object.keys(obj)

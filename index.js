@@ -27,6 +27,7 @@ Cassandrom.prototype.Schema = Schema;
 
 Cassandrom.prototype.connect = Cassandrom.prototype.createConnection = function (options, fn) {
   var conn = new cassandraDriver.Client(options);
+
   this.connections.push(conn);
 
   conn._events = {
@@ -131,7 +132,7 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
 
   // console.log("schema " + JSON.stringify(schema) );
 
-  model = Model.compile(name, schema, collection, connection, this);
+  model = Model.compile(name, schema, collection, this);
 
   if (!skipInit) {
     model.init();
@@ -143,5 +144,9 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
 
   return this.models[name] = model;
 }
+
+Cassandrom.prototype.execute = function() {
+  this.connections[0].execute.apply(this.connections[0], arguments);
+};
 
 var cassandra = module.exports = exports = new Cassandrom;
