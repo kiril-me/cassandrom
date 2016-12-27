@@ -1,9 +1,36 @@
+var sliced = require('sliced');
+var mpath = require('mpath');
 
 var toString = Object.prototype.toString;
+
+/*!
+ * Return the value of `obj` at the given `path`.
+ *
+ * @param {String} path
+ * @param {Object} obj
+ */
+
+exports.getValue = function(path, obj, map) {
+  return mpath.get(path, obj, '_doc', map);
+};
+
+/*!
+ * Sets the value of `obj` at the given `path`.
+ *
+ * @param {String} path
+ * @param {Anything} val
+ * @param {Object} obj
+ */
+
+exports.setValue = function(path, val, obj, map) {
+  mpath.set(path, val, obj, '_doc', map);
+};
 
 exports.isObject = function (arg) {
   return '[object Object]' == toString.call(arg);
 }
+
+exports.args = sliced;
 
 exports.clone = function clone (obj, options) {
   if (obj === undefined || obj === null)
@@ -92,4 +119,12 @@ exports.each = function(arr, fn) {
     fn(arr[i]);
   }
 };
+
+exports.object = {};
+
+var hop = Object.prototype.hasOwnProperty;
+exports.object.hasOwnProperty = function(obj, prop) {
+  return hop.call(obj, prop);
+};
+
 

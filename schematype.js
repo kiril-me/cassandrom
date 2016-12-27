@@ -28,9 +28,9 @@ function SchemaType (path, options, instance) {
   for (var i in options) {
     if (this[i] && 'function' == typeof this[i]) {
       // { unique: true, index: true }
-      // if ('index' == i && this._index) {
-      //   continue;
-      // }
+      if ('index' == i && this._index) {
+         continue;
+      }
 
       var opts = Array.isArray(options[i])
         ? options[i]
@@ -256,7 +256,9 @@ SchemaType.prototype.applySetters = function (value, scope, init, priorVal) {
     v = setters[len].call(scope, v, this);
   }
 
-  if (null === v || undefined === v) return v;
+  if (null === v || undefined === v) {
+    return v;
+  }
 
   // do not cast until all setters are applied #665
   v = this.cast(v, scope, init, priorVal);

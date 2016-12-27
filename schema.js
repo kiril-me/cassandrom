@@ -1,5 +1,9 @@
-var EventEmitter = require('events').EventEmitter;
 
+var Kareem = require('kareem');
+var EventEmitter = require('events').EventEmitter;
+var cassandraDriver = require('cassandra-driver');
+
+var UUIDType = require('./schema/uuid');
 var utils = require("./utils")
 
 var error = require("./error");
@@ -10,6 +14,17 @@ Schema.Types = require('./schema/index');
 Types = Schema.Types;
 
 var VirtualType = require('./virtualtype');
+
+var IS_KAREEM_HOOK = {
+  count: true,
+  find: true,
+  findOne: true,
+  findOneAndUpdate: true,
+  findOneAndRemove: true,
+  insertMany: true,
+  update: true
+};
+
 
 function Schema (obj, options) {
   if (!(this instanceof Schema)) {
@@ -41,9 +56,29 @@ function Schema (obj, options) {
 
   this.insensitive = !!this.options.insensitive;
 
+  this.s = {
+    hooks: new Kareem(),
+    kareemHooks: IS_KAREEM_HOOK
+  };
+
   if (obj) {
+    if(!obj.id) {
+      obj.id = {
+        type: UUIDType,
+        required: true,
+        trim: true,
+        default: cassandraDriver.types.uuid
+      };
+    }
+
     this.add(obj);
   }
+
+  for (var i = 0; i < this._defaultMiddleware.length; ++i) {
+    var m = this._defaultMiddleware[i];
+    this[m.kind](m.hook, !!m.isAsync, m.fn);
+  }
+
 }
 
 Schema.prototype = Object.create(EventEmitter.prototype);
@@ -52,26 +87,30 @@ Schema.prototype.instanceOfSchema = true;
 
 Schema.prototype.tree;
 Schema.prototype.paths;
+Schema.prototype.obj;
 
 Schema.prototype.select = function(modelName, conditions, fields, limit) {
   var select = this.selectFields(fields);
-  var where = "";
   var params = [];
-  for(var p in conditions) {
-    if(where.length > 0) {
-      where += " AND ";
-    }
-    where += this.paths[p].options.name + " = ?"
-
-    //var val = obj.getValue(p);
-    params.push(this.paths[p].castForQuery( conditions[p]) );
-  }
 
   var query = "SELECT " + select + " FROM " + modelName;
-  if(where.length > 0) {
-    query += " WHERE " + where;
+  if(conditions) {
+    var where = '';
+    for(var p in conditions) {
+      if(this.paths[p]) {
+        if(where.length > 0) {
+          where += " AND ";
+        }
+        where += this.paths[p].options.name + " = ?";
+        params.push(this.paths[p].castForQuery( conditions[p]) );
+      } else {
+        console.log('select ' + p);
+      }
+    }
+    if(where.length > 0) {
+      query += " WHERE " + where;
+    }
   }
-
   if(limit) {
     query += " LIMIT " + limit;
   }
@@ -102,17 +141,54 @@ Schema.prototype._insertValue = function(path, obj, name, fields, params, valida
         params[options.name] = namePath.castForQuery( value );
       }
     } else {
-      console.log('cast ', path);
       params[options.name] = namePath.castForQuery( value );
     }
   } else if(value && path in this.nested) {
     for(var subname in this.tree[path]) {
       validationError = this._insertValue(name + '.' + subname, value, subname, fields, params, validationError);
     }
-  } else {
-    console.log('ups ', path, value);
   }
   return validationError;
+};
+
+Schema.prototype.update = function(modelName, obj, where, delta, fields) {
+  var list =[];
+  if(fields && Array.isArray(fields)) {
+    list = fields;
+  }
+
+  var paramsMap = {};
+  var validationError;
+
+  console.log('udpate', where, delta);
+
+  for(var p in this.tree) {
+    validationError = this._insertValue(p, obj, p, list, paramsMap, validationError);
+  }
+
+  var query =  "UPDATE " + modelName + " (";
+  var values = '';
+  var params = [];
+  for(var name in paramsMap) {
+    if(params.length === 0) {
+      query += name.replace('\.', '_');
+      values += '?';
+      params.push(paramsMap[name]);
+    } else {
+      query += ', ' + name.replace('\.', '_');
+      values += ', ?';
+      params.push(paramsMap[name]);
+    }
+  }
+  query += ') VALUES (' + values + ')';
+
+  console.log('[cassandrom] ' + query);
+  return {
+    query: query,
+    params: params,
+    errors: validationError
+  };
+// update(this.modelName, this, where, delta[1], options)
 };
 
 Schema.prototype.insert = function(modelName, obj, fields) {
@@ -144,76 +220,7 @@ Schema.prototype.insert = function(modelName, obj, fields) {
   }
   query += ') VALUES (' + values + ')';
 
-console.log(query);
-
-/*
-console.log('--------');
-for(var p in this.tree) {
-  console.log(p);
-}
-
-console.log('--------');
-for(var p in this.paths) {
-  console.log(p);
-}
-
-console.log('--------');
-for(var p in this.subpaths) {
-  console.log(p);
-}
-
-
-  for(var p in this.tree) {
-
-    // this._insertValue(p, obj, list, params);
-
-    var val = obj[p];
-    var path =  this.path(p); // this.paths[p];
-    // if(!path) {
-    // }
-
-    //if (schematype.options.required) {
-    //var gotError = false;
-// console.log('modelName', modelName, 'path', path, 'name', p, 'value', val);
-
-    path.doValidate(val, function (err) {
-      if(err) {
-        //gotError = true;
-        if (!validationError) {
-          validationError = new ValidationError(obj);
-        }
-        var validatorError = new ValidatorError(p, err, 'user defined', val)
-        validationError.errors[p] = validatorError;
-      }
-    }, obj);
-    //}
-
-    if(val) {
-      var options = path.options;
-      if(list.length > 0) {
-        if(list.indexOf(p) >=0 ) {
-          if(values.length > 0) {
-            names += ", ";
-            values += ", ";
-          }
-          names += options.name;
-          values += "?";
-          params.push(path.castForQuery( val ));
-        }
-      } else {
-        if(values.length > 0) {
-          names += ", ";
-          values += ", ";
-        }
-        names += options.name;
-        values += "?";
-
-        params.push(path.castForQuery( val ));
-      }
-    }
-  }
-*/
-
+  console.log('[cassandrom] ' + query);
 
   return {
     query: query,
@@ -246,28 +253,55 @@ Schema.prototype._select = function(name) {
   return select;
 };
 
+var CQL_FUNCTIONS = {
+  'count': true
+};
+
+function _isFunction(field) {
+  var ind = field.indexOf('(');
+  if(ind >= 0) {
+    var name = field.substring(0, ind);
+    return CQL_FUNCTIONS[name];
+  }
+  return false;
+};
+
 Schema.prototype.selectFields = function(fields) {
   var list =[];
   if(fields && Array.isArray(fields)) {
     list = fields;
   }
-
-  var select = '', fieldSelect;
+  var used = {};
+  var select = '', fieldSelect, index;
   for(var p in this.tree) {
     fieldSelect = null;
     if(list.length > 0) {
-        if(list.indexOf(p) >= 0) {
-          fieldSelect = this._select(p);
-        }
+      index = list.indexOf(p);
+      // console.log('   ', list, index, p);
+      if(index >= 0) {
+        fieldSelect = this._select(p);
+        used[p] = true;
+        // console.log(fieldSelect, ' = ', p);
+      }
     } else {
       fieldSelect = this._select(p);
     }
     if(fieldSelect !== null) {
-      console.log(p + ': ' + fieldSelect);
       if(select.length > 0) {
         select += ", ";
       }
       select += fieldSelect;
+    }
+  }
+
+  if(list.length > 0) {
+    for(var i = 0; i < list.length; i++) {
+      if(!used[list[i]] && _isFunction(list[i])) {
+        if(select.length > 0) {
+          select += ", ";
+        }
+        select += list[i];
+      }
     }
   }
 
@@ -298,9 +332,15 @@ Schema.prototype.add = function add (obj, prefix) {
         this.nested[prefix + key] = true;
         this.add(desc, prefix + key + '.');
       } else {
+        if (prefix) {
+          this.nested[prefix.substr(0, prefix.length - 1)] = true;
+        }
         this.path(prefix + key, desc); // mixed type
       }
     } else {
+      if (prefix) {
+        this.nested[prefix.substr(0, prefix.length - 1)] = true;
+      }
       this.path(prefix + key, desc);
     }
   }
@@ -308,6 +348,7 @@ Schema.prototype.add = function add (obj, prefix) {
 
 Schema.reserved = Object.create(null);
 var reserved = Schema.reserved;
+reserved['prototype'] =
 reserved.on =
 reserved.db =
 reserved.set =
@@ -372,8 +413,6 @@ Schema.prototype.path = function (path, obj) {
 
   branch[last] = utils.clone(obj);
 
-console.log('create path', path);
-
   this.paths[path] = Schema.interpretAsType(this.insensitive, path, obj);
 
   // if (this.paths[path].$isSingleNested) {
@@ -395,8 +434,6 @@ console.log('create path', path);
 };
 
 Schema.interpretAsType = function (insensitive, path, obj) {
-
-
   if (obj.constructor && obj.constructor.name != 'Object') {
     obj = { type: obj };
   }
@@ -407,8 +444,6 @@ Schema.interpretAsType = function (insensitive, path, obj) {
   var type = obj.type && !obj.type.type
     ? obj.type
     : {};
-
-  // console.log('interpretAsType', path, 'type', type);
 
   // if ('Object' == type.constructor.name || 'mixed' == type) {
   //   return new Types.Mixed(path, obj);
@@ -427,7 +462,6 @@ Schema.interpretAsType = function (insensitive, path, obj) {
     var cast = Array == type
       ? obj.cast
       : type[0];
-// console.log("path " + path + " cast " + JSON.stringify(cast) + " obj "+ JSON.stringify(obj));
     return new Types.Collection(path, cast, obj);
   }
 
@@ -444,10 +478,6 @@ Schema.interpretAsType = function (insensitive, path, obj) {
         '`\n  Did you try nesting Schemas? ' +
         'You can only nest using refs or arrays.');
   }
-
-// if(name === 'name') {
-//  console.log('inter path', path, ' name ', name);
-// }
 
   return new Types[name](path, obj);
 };
@@ -544,24 +574,75 @@ Schema.prototype.build = function(name) {
 };
 
 Schema.prototype.static = function(name, fn) {
-  if ('string' != typeof name)
-    for (var i in name)
+  if ('string' !== typeof name) {
+    for (var i in name) {
       this.statics[i] = name[i];
-  else
+    }
+  } else {
     this.statics[name] = fn;
+  }
   return this;
 };
 
 Schema.prototype.method = function (name, fn) {
-  if ('string' != typeof name)
-    for (var i in name)
+  if ('string' !== typeof name) {
+    for (var i in name) {
       this.methods[i] = name[i];
-  else
+    }
+  } else {
     this.methods[name] = fn;
+  }
   return this;
 };
 
 Schema.prototype.virtual = function(name, options) {
+  if (options && options.ref) {
+    this.pre('init', function(next, obj) {
+      if (name in obj) {
+        if (!this.$$populatedVirtuals) {
+          this.$$populatedVirtuals = {};
+        }
+
+        if (options.justOne) {
+          this.$$populatedVirtuals[name] = Array.isArray(obj[name]) ?
+            obj[name][0] :
+            obj[name];
+        } else {
+          this.$$populatedVirtuals[name] = Array.isArray(obj[name]) ?
+            obj[name] :
+            obj[name] == null ? [] : [obj[name]];
+        }
+
+        delete obj[name];
+      }
+      if (this.ownerDocument) {
+        next();
+        return obj;
+      } else {
+        next();
+      }
+    });
+
+    var virtual = this.virtual(name);
+    virtual.options = options;
+    return virtual.
+      get(function() {
+        if (!this.$$populatedVirtuals) {
+          this.$$populatedVirtuals = {};
+        }
+        if (name in this.$$populatedVirtuals) {
+          return this.$$populatedVirtuals[name];
+        }
+        return null;
+      }).
+      set(function(v) {
+        if (!this.$$populatedVirtuals) {
+          this.$$populatedVirtuals = {};
+        }
+        this.$$populatedVirtuals[name] = v;
+      });
+  }
+
   var virtuals = this.virtuals;
   var parts = name.split('.');
 
@@ -600,12 +681,41 @@ Schema.prototype.pathType = function(path) {
   return 'adhocOrUndefined';
 };
 
+Schema.prototype.post = function(method, fn) {
+  if (IS_KAREEM_HOOK[method]) {
+    this.s.hooks.post.apply(this.s.hooks, arguments);
+    return this;
+  }
+  // assuming that all callbacks with arity < 2 are synchronous post hooks
+  if (fn.length < 2) {
+    return this.queue('on', [arguments[0], function(doc) {
+      return fn.call(doc, doc);
+    }]);
+  }
+
+  if (fn.length === 3) {
+    this.s.hooks.post(method + ':error', fn);
+    return this;
+  }
+
+  return this.queue('post', [arguments[0], function(next) {
+    // wrap original function so that the callback goes last,
+    // for compatibility with old code that is using synchronous post hooks
+    var _this = this;
+    var args = Array.prototype.slice.call(arguments, 1);
+    fn.call(this, this, function(err) {
+      return next.apply(_this, [err].concat(args));
+    });
+  }]);
+};
+
+
 Schema.prototype.pre = function() {
-  // var name = arguments[0];
-  // if (IS_KAREEM_HOOK[name]) {
-  //   this.s.hooks.pre.apply(this.s.hooks, arguments);
-  //   return this;
-  // }
+  var name = arguments[0];
+  if (IS_KAREEM_HOOK[name]) {
+    this.s.hooks.pre.apply(this.s.hooks, arguments);
+    return this;
+  }
   return this.queue('pre', arguments);
 };
 
@@ -641,5 +751,165 @@ Schema.prototype.queue = function(name, args) {
 Schema.prototype.get = function(key) {
   return this.options[key];
 };
+
+
+Object.defineProperty(Schema.prototype, '_defaultMiddleware', {
+  configurable: false,
+  enumerable: false,
+  writable: false,
+  value: [
+    {
+      kind: 'pre',
+      hook: 'save',
+      fn: function(next, options) {
+        var _this = this;
+        // Nested docs have their own presave
+        if (this.ownerDocument) {
+          return next();
+        }
+
+        var hasValidateBeforeSaveOption = options &&
+            (typeof options === 'object') &&
+            ('validateBeforeSave' in options);
+
+        var shouldValidate;
+        if (hasValidateBeforeSaveOption) {
+          shouldValidate = !!options.validateBeforeSave;
+        } else {
+          shouldValidate = this.schema.options.validateBeforeSave;
+        }
+
+        // Validate
+        if (shouldValidate) {
+          // HACK: use $__original_validate to avoid promises so bluebird doesn't
+          // complain
+          if (this.$__original_validate) {
+            this.$__original_validate({__noPromise: true}, function(error) {
+              return _this.schema.s.hooks.execPost('save:error', _this, [_this], { error: error }, function(error) {
+                next(error);
+              });
+            });
+          } else {
+            this.validate({__noPromise: true}, function(error) {
+              return _this.schema.s.hooks.execPost('save:error', _this, [ _this], { error: error }, function(error) {
+                next(error);
+              });
+            });
+          }
+        } else {
+          next();
+        }
+      }
+    },
+    {
+      kind: 'pre',
+      hook: 'save',
+      isAsync: true,
+      fn: function(next, done) {
+        var _this = this;
+        var subdocs = this.$__getAllSubdocs();
+
+        if (!subdocs.length || this.$__preSavingFromParent) {
+          done();
+          next();
+          return;
+        }
+
+        each(subdocs, function(subdoc, cb) {
+          subdoc.$__preSavingFromParent = true;
+          subdoc.save(function(err) {
+            cb(err);
+          });
+        }, function(error) {
+          for (var i = 0; i < subdocs.length; ++i) {
+            delete subdocs[i].$__preSavingFromParent;
+          }
+          if (error) {
+            return _this.schema.s.hooks.execPost('save:error', _this, [_this], { error: error }, function(error) {
+              done(error);
+            });
+          }
+          next();
+          done();
+        });
+      }
+    },
+    {
+      kind: 'pre',
+      hook: 'validate',
+      isAsync: true,
+      fn: function(next, done) {
+        // Hack to ensure that we always wrap validate() in a promise
+        next();
+        done();
+      }
+    },
+    {
+      kind: 'pre',
+      hook: 'remove',
+      isAsync: true,
+      fn: function(next, done) {
+        if (this.ownerDocument) {
+          done();
+          next();
+          return;
+        }
+
+        var subdocs = this.$__getAllSubdocs();
+
+        if (!subdocs.length || this.$__preSavingFromParent) {
+          done();
+          next();
+          return;
+        }
+
+        each(subdocs, function(subdoc, cb) {
+          subdoc.remove({ noop: true }, function(err) {
+            cb(err);
+          });
+        }, function(error) {
+          if (error) {
+            done(error);
+            return;
+          }
+          next();
+          done();
+        });
+      }
+    }
+  ]
+});
+
+Schema.prototype.virtualpath = function(name) {
+  return this.virtuals[name];
+};
+
+/**
+ * Returns an Array of path strings that are required by this schema.
+ *
+ * @api public
+ * @param {Boolean} invalidate refresh the cache
+ * @return {Array}
+ */
+
+Schema.prototype.requiredPaths = function requiredPaths(invalidate) {
+  if (this._requiredpaths && !invalidate) {
+    return this._requiredpaths;
+  }
+
+  var paths = Object.keys(this.paths),
+      i = paths.length,
+      ret = [];
+
+  while (i--) {
+    var path = paths[i];
+    if (this.paths[path].isRequired) {
+      ret.push(path);
+    }
+  }
+  this._requiredpaths = ret;
+  return this._requiredpaths;
+};
+
 
 module.exports = exports = Schema;

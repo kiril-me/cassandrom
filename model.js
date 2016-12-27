@@ -1,3 +1,7 @@
+var Document = require('./document');
+
+var parallel = require('async/parallel');
+
 var utils = require('./utils');
 var error = require('./error');
 var Promise = require('./promise');
@@ -10,18 +14,16 @@ function Model(doc, fields) {
   //this.plugins = [];
   //this.models = {};
   //this.modelSchemas = {};
+  Document.call(this, doc, fields);
 
-  this.$__ = {
-    emitter: new EventEmitter()
-  };
 
+/*
   this.options = {
 
   };
 
-  this.isNew = true;
-  this.errors = undefined;
 
+  this.isNew = true;
   var obj = this.$__normalize(doc);
 
   this._doc = this.$__buildDoc(obj, fields);
@@ -29,144 +31,81 @@ function Model(doc, fields) {
   if (doc) {
     this.set(obj, undefined, true);
   }
+  */
 }
 
-utils.each(
-  ['on', 'once', 'emit', 'listeners', 'removeListener', 'setMaxListeners',
-    'removeAllListeners', 'addListener'],
-  function(emitterFn) {
-    Model.prototype[emitterFn] = function() {
-      return this.$__.emitter[emitterFn].apply(this.$__.emitter, arguments);
-    };
-});
+// Model.prototype.constructor = Model;
 
-Model.prototype.constructor = Model;
 
-Model.prototype.schema;
+Model.prototype.__proto__ = Document.prototype;
+
+// Model.prototype.schema;
 
 Model.prototype.modelName;
 
-// Model.prototype.db;
+Model.prototype.db;
 
-Model.init = function init () {
-  // if (this.schema.options.autoIndex) {
-  //   this.ensureIndexes();
-  // }
+Model.prototype.collection;
 
-  this.schema.emit('init', this);
-  //this.emit('init', this);
-
-  return this;
-};
+Model.prototype.baseModelName;
 
 for (var i in EventEmitter.prototype) {
   Model[i] = EventEmitter.prototype[i];
 }
 
-Model.prototype.$__normalize = function(obj) {
-  var paths = Object.keys(this.schema.paths),
-  old;
-  for(var i = 0; i < paths.length; i++) {
-    var p = paths[i];
-    var type = this.schema.path(p);
-    var name = type.options.name;
-    //console.log('*= ' + p + '   ' + name);
-    if(p !== name && obj[name]) {
-      old = obj[name];
-      delete obj[name];
-      obj[p] = old;
-    }
+Model.init = function init () {
+  if ((this.schema.options.autoIndex) ||
+      (this.schema.options.autoIndex === null && this.db.config.autoIndex)) {
+    this.ensureIndexes({ __noPromise: true, _automatic: true });
   }
-  return obj;
+
+  this.schema.emit('init', this);
 };
 
-Model.prototype.$__buildDoc = function (obj, fields) {
-  var doc = {}
-    , self = this
-    , exclude
-    , keys
-    , key
-    , ki;
-
-  if (fields && 'Object' === fields.constructor.name) {
-    keys = Object.keys(fields);
-    ki = keys.length;
-
-    // while (ki--) {
-    //   if ('_id' !== keys[ki]) {
-    //     exclude = 0 === fields[keys[ki]];
-    //     break;
-    //   }
-    // }
+Model.ensureIndexes = function ensureIndexes(options, callback) {
+  if (typeof options === 'function') {
+    callback = options;
+    options = null;
   }
 
-  var paths = Object.keys(this.schema.paths)
-    , plen = paths.length
-    , ii = 0
-
-  for (; ii < plen; ++ii) {
-    var p = paths[ii];
-
-    // if ('_id' == p) {
-    //   if (skipId) continue;
-    //   if (obj && '_id' in obj) continue;
-    // }
-
-    var type = this.schema.paths[p]
-      , path = p.split('.')
-      , len = path.length
-      , last = len-1
-      , curPath = ''
-      , doc_ = doc
-      , i = 0
-
-    for (; i < len; ++i) {
-      var piece = path[i]
-        , def
-
-      // support excluding intermediary levels
-      // if (exclude) {
-      //   curPath += piece;
-      //   if (curPath in fields) break;
-      //   curPath += '.';
-      // }
-
-      if (i === last) {
-        if (fields) {
-          // if (exclude) {
-          //   // apply defaults to all non-excluded fields
-          //   if (p in fields) continue;
-
-          //   def = type.getDefault(self, true);
-          //   if ('undefined' !== typeof def) {
-          //     doc_[piece] = def;
-          //     self.$__.activePaths.default(p);
-          //   }
-
-          // } else
-          if (p in fields) {
-            // selected field
-            def = type.getDefault(self, true);
-            if ('undefined' !== typeof def) {
-              doc_[piece] = def;
-              //self.$__.activePaths.default(p);
-            }
-          }
-        } else {
-          def = type.getDefault(self, true);
-          if ('undefined' !== typeof def) {
-            doc_[piece] = def;
-            // self.$__.activePaths.default(p);
-          }
-        }
-      } else {
-        doc_ = doc_[piece] || (doc_[piece] = {});
+  if (options && options.__noPromise) {
+    _ensureIndexes(this, options, callback);
+    return;
+  }
+/*
+  if (callback) {
+    callback = this.$wrapCallback(callback);
+  }
+*/
+  var _this = this;
+  return new Promise(function(resolve, reject) {
+    _ensureIndexes(_this, options || {}, function(error) {
+      if (error) {
+        callback && callback(error);
+        reject(error);
       }
-    }
-  };
-
-  return doc;
+      callback && callback();
+      resolve();
+    });
+  });
 };
+
+function _ensureIndexes(model, options, callback) {
+  var indexes = model.schema.indexes();
+  if (!indexes.length) {
+    setImmediate(function() {
+      callback && callback();
+    });
+    return;
+  }
+  // TODO index
+  console.log('TODO index support');
+}
+/*
+Model.prototype.model = function model(name) {
+  return this.db.model(name);
+};
+*/
 
 // Model.prototype.getValue = function (path) {
 //   console.log(" ##### " + JSON.stringify( this._doc ) + ' path ' + path);
@@ -174,214 +113,190 @@ Model.prototype.$__buildDoc = function (obj, fields) {
 //   // return utils.getValue(path, this._doc);
 // }
 
-Model.prototype.save = function save (fields, fn) {
-  if ('function' == typeof fields) {
-    fn = fields;
-    fields = null;
+Model.prototype.save = function save (options, fn) {
+  if (typeof options === 'function') {
+    fn = options;
+    options = undefined;
+  }
+
+  if (!options) {
+    options = {};
+  }
+  return this.$__save(options, fn);
+};
+
+Model.prototype.$__save = function(options, callback) {
+  var _this = this;
+
+  _this.$__handleSave(options, function(error, result) {
+    if (error) {
+      return _this.schema.s.hooks.execPost('save:error', _this, [_this], { error: error }, function(error) {
+        callback(error);
+      });
+    }
+
+    _this.$__reset();
+    _this.$__storeShard();
+
+    var numAffected = 0;
+    if (result) {
+      if (Array.isArray(result)) {
+        numAffected = result.length;
+      } else if (result.result && result.result.n !== undefined) {
+        numAffected = result.result.n;
+      } else if (result.result && result.result.nModified !== undefined) {
+        numAffected = result.result.nModified;
+      } else {
+        numAffected = result;
+      }
+    }
+
+    // was this an update that required a version bump?
+    if (_this.$__.version && !_this.$__.inserting) {
+      var doIncrement = VERSION_INC === (VERSION_INC & _this.$__.version);
+      _this.$__.version = undefined;
+
+      if (numAffected <= 0) {
+        // the update failed. pass an error back
+        var err = new VersionError(_this);
+        return callback(err);
+      }
+
+      // increment version if was successful
+      if (doIncrement) {
+        var key = _this.schema.options.versionKey;
+        var version = _this.getValue(key) | 0;
+        _this.setValue(key, version + 1);
+      }
+    }
+
+    _this.emit('save', _this, numAffected);
+    callback(null, _this, numAffected);
+  });
+};
+
+Model.prototype.$__handleSave = function(options, callback) {
+  var _this = this;
+  if (!options.safe && this.schema.options.safe) {
+    options.safe = this.schema.options.safe;
+  }
+  if (typeof options.safe === 'boolean') {
+    options.safe = null;
   }
 
   if (this.isNew) {
-    // for(var p in this) {
-    //   console.log(p);
-    // }
-    var insert = this.schema.insert(this.modelName, this, fields), self = this;
-    //console.log(insert.query);
+    // send entire doc
+    var toObjectOptions = {};
+
+    toObjectOptions.retainKeyOrder = this.schema.options.retainKeyOrder;
+    toObjectOptions.depopulate = 1;
+    toObjectOptions._skipDepopulateTopLevel = true;
+    toObjectOptions.transform = false;
+
+    var obj = this.toObject(toObjectOptions);
+/*
+    if (!utils.object.hasOwnProperty(obj || {}, '_id')) {
+      // documents must have an _id else mongoose won't know
+      // what to update later if more changes are made. the user
+      // wouldn't know what _id was generated by mongodb either
+      // nor would the ObjectId generated my mongodb necessarily
+      // match the schema definition.
+      setTimeout(function() {
+        callback(new Error('document must have an _id before saving'));
+      }, 0);
+      return;
+    }
+
+    this.$__version(true, obj);
+*/
+    var insert = this.schema.insert(this.modelName, this, options), self = this;
     if(insert.error) {
-      fn(insert.error);
+      self.isNew = true;
+      self.emit('isNew', true);
+
+      callback(insert.error);
     } else {
       this.base.execute(insert.query, insert.params, {prepare: true}, function(error, status) {
         if(error) {
-          fn(error);
+          self.isNew = true;
+          self.emit('isNew', true);
+
+          callback(error);
         } else {
-          // console.log(JSON.stringify(status));
-
-          // TODO check status.opcode??
-
           self.isNew = false;
-          fn(null, self);
+          callback(null, self);
         }
       });
     }
+
+/* TODO
+    this.collection.insert(obj, options.safe, function(err, ret) {
+      if (err) {
+        _this.isNew = true;
+        _this.emit('isNew', true);
+
+        callback(err);
+        return;
+      }
+
+      callback(null, ret);
+    });
+*/
+    this.$__reset();
+    this.isNew = false;
+    this.emit('isNew', false);
+    // Make it possible to retry the insert
+    this.$__.inserting = true;
   } else {
-    // TODO update;
+    // Make sure we don't treat it as a new object on error,
+    // since it already exists
+    this.$__.inserting = false;
+
+    var delta = this.$__delta();
+
+    if (delta) {
+      if (delta instanceof Error) {
+        callback(delta);
+        return;
+      }
+
+      var where = this.$__where(delta[0]);
+
+      if (where instanceof Error) {
+        callback(where);
+        return;
+      }
+
+      var update = this.schema.update(this.modelName, this, where, delta[1], options), self = this;
+      if(update.error) {
+        callback(update.error);
+      } else {
+        this.base.execute(update.query, update.params, {prepare: true}, function(error, status) {
+          if(error) {
+            callback(error);
+          } else {
+            callback(null, self);
+          }
+        });
+      }
+
+      // this.collection.update(where, delta[1], options.safe, function(err, ret) {
+      //   if (err) {
+      //     callback(err);
+      //     return;
+      //   }
+      //   callback(null, ret);
+      // });
+    } else {
+      this.$__reset();
+      callback();
+      return;
+    }
+
+    this.emit('isNew', false);
   }
 };
 
-Model.prototype.set = function (path, val, type, options) {
-  if (type && 'Object' == type.constructor.name) {
-    options = type;
-    type = undefined;
-  }
-
-  var merge = options && options.merge
-   // , adhoc = type && true !== type
-    , constructing = true === type
-    , adhocs;
-
-  // if (adhoc) {
-  //   adhocs = this.$__.adhocPaths || (this.$__.adhocPaths = {});
-  //   adhocs[path] = Schema.interpretAsType(path, type);
-  // }
-
-  if ('string' !== typeof path) {
-    // new Document({ key: val })
-
-    if (null === path || undefined === path) {
-      var _ = path;
-      path = val;
-      val = _;
-
-    } else {
-      var prefix = val
-        ? val + '.'
-        : '';
-
-      if (path instanceof Model) {
-        path = path._doc;
-      }
-
-      var keys = Object.keys(path)
-        , i = keys.length
-        // , pathtype
-        , key
-
-
-      while (i--) {
-        key = keys[i];
-        //pathtype = this.schema.pathType(prefix + key);
-
-//console.log('@@ ' + key + ": " + path[key] + "    " + utils.isObject(path[key]));
-
-
-        if (null != path[key]
-            // need to know if plain object - no Buffer, ObjectId, ref, etc
-            && utils.isObject(path[key])
-            && (!path[key].constructor || 'Object' == path[key].constructor.name)
-            // && 'virtual' != pathtype
-            // && !(this.$__path(prefix + key) instanceof MixedSchema)
-            && !(this.schema.paths[key] && this.schema.paths[key].options.ref)
-          ) {
-          this.set(path[key], prefix + key, constructing);
-        } else if (undefined !== path[key]) {
-          this.set(prefix + key, path[key], constructing);
-        }
-        // else {
-        //   console.log(prefix + ", " + key + ", " + path[key] + ", " + constructing);
-        //   throw new Error("Field `" + key + "` is not in schema.");
-        // }
-
-
-        // else if (strict) {
-        //   if ('real' === pathtype || 'virtual' === pathtype) {
-        //     this.set(prefix + key, path[key], constructing);
-        //   } else if ('throw' == strict) {
-        //     throw new Error("Field `" + key + "` is not in schema.");
-        //   }
-        // } else if (undefined !== path[key]) {
-        //   this.set(prefix + key, path[key], constructing);
-        // }
-      }
-
-      return this;
-    }
-  }
-
-  // ensure _strict is honored for obj props
-  // docschema = new Schema({ path: { nest: 'string' }})
-  // doc.set('path', obj);
-  // var pathType = this.schema.pathType(path);
-  // if ('nested' == pathType && val && utils.isObject(val) &&
-  //     (!val.constructor || 'Object' == val.constructor.name)) {
-  //   if (!merge) this.setValue(path, null);
-  //   this.set(val, path, constructing);
-  //   return this;
-  // }
-
-  // console.log('set schema ' + this.schema );
-
-  var schema;
-  var parts = path.split('.');
-
-  // if ('adhocOrUndefined' == pathType && strict) {
-
-  //   // check for roots that are Mixed types
-  //   var mixed;
-
-  //   for (var i = 0; i < parts.length; ++i) {
-  //     var subpath = parts.slice(0, i+1).join('.');
-  //     schema = this.schema.path(subpath);
-  //     if (schema instanceof MixedSchema) {
-  //       // allow changes to sub paths of mixed types
-  //       mixed = true;
-  //       break;
-  //     }
-  //   }
-
-  //   if (!mixed) {
-  //     if ('throw' == strict) {
-  //       throw new Error("Field `" + path + "` is not in schema.");
-  //     }
-  //     return this;
-  //   }
-
-  // } else if ('virtual' == pathType) {
-  //   schema = this.schema.virtualpath(path);
-  //   schema.applySetters(val, this);
-  //   return this;
-  // } else {
-    schema = this.schema.path(path); //this.$__path(path);
-  // }
-
-
-
-  var pathToMark;
-
-  // console.log('set schema ' + schema);
-
-  // When using the $set operator the path to the field must already exist.
-  // Else mongodb throws: "LEFT_SUBFIELD only supports Object"
-
-  if (parts.length <= 1) {
-    pathToMark = path;
-  } else {
-    for (var i = 0; i < parts.length; ++i) {
-      var subpath = parts.slice(0, i+1).join('.');
-      // console.log('sub ' + subpath  + '  ' + schema  + '  ' + val);
-
-      if ( subpath in this.schema.paths
-          || this.get(subpath) === null) {
-        pathToMark = subpath;
-        break;
-      }
-    }
-
-    if (!pathToMark) {
-      pathToMark = path;
-    }
-  }
-
-  // if this doc is being constructed we should not trigger getters
-  var priorVal = constructing
-    ? undefined
-    : this.getValue(path);
-
-  if (!schema || undefined === val) {
-    this.$__set(pathToMark, path, constructing, parts, schema, val, priorVal);
-    return this;
-  }
-
-// console.log('set ' + path + ': ' + val + ', ' + priorVal, schema);
-  var self = this;
-  var shouldSet = this.$__try(function(){
-    val = schema.applySetters(val, self, false, priorVal);
-  });
-
-  if (shouldSet) {
-    this.$__set(pathToMark, path, constructing, parts, schema, val, priorVal);
-  }
-
-  return this;
-}
 
 Model.prototype.$__try = function (fn, scope) {
   var res;
@@ -397,7 +312,7 @@ Model.prototype.$__try = function (fn, scope) {
 
 
 Model.prototype.$__error = function(error) {
-  console.error("Error: " + error);
+  console.error("[cassandrom] Error: " + error);
 };
 // Model.prototype.$__shouldModify = function (
 //     pathToMark, path, constructing, parts, schema, val, priorVal) {
@@ -429,7 +344,7 @@ Model.prototype.$__error = function(error) {
 //   }
 //   return false;
 // }
-
+/*
 Model.prototype.$__set = function (
     pathToMark, path, constructing, parts, schema, val, priorVal) {
 
@@ -463,66 +378,84 @@ Model.prototype.$__set = function (
     }
   }
 }
+*/
 
-Model.create = function create (doc, fields, fn) {
-  if ('function' == typeof fields) {
-    fn = fields;
-    fields = null;
+Model.create = function create(doc, callback) {
+  var args;
+  var cb;
+
+  if (Array.isArray(doc)) {
+    args = doc;
+    cb = callback;
+  } else {
+    var last = arguments[arguments.length - 1];
+    if (typeof last === 'function') {
+      cb = last;
+      args = utils.args(arguments, 0, arguments.length - 1);
+    } else {
+      args = utils.args(arguments);
+    }
   }
 
-  //var args;
-  // promise = new Promise
-  var self = this;
-  if (Array.isArray(doc)) {
-    //args = doc;
-    console.log("Not implemented");
-    // if ('function' == typeof fn) {
-    //   promise.onResolve(fn);
-    // }
-  } else {
-    //console.log('creat model name ' + self.modelName)
-    var model = new self(doc);
+  var _this = this;
+  // if (cb) {
+  //   cb = this.$wrapCallback(cb);
+  // }
 
-   // console.log('def ' + model.userId);
+  var promise = new Promise(function(resolve, reject) {
+    if (args.length === 0) {
+      setImmediate(function() {
+        cb && cb(null);
+        resolve(null);
+      });
+      return;
+    }
 
-    model.save(fields, function (err, result) {
-      fn(err, result);
+    var toExecute = [];
+    args.forEach(function(doc) {
+      toExecute.push(function(callback) {
+        var toSave = doc instanceof _this ? doc : new _this(doc);
+        var callbackWrapper = function(error, doc) {
+          if (error) {
+            return callback(error);
+          }
+          callback(null, doc);
+        };
+
+        // Hack to avoid getting a promise because of
+        // $__registerHooksFromSchema
+        if (toSave.$__original_save) {
+          toSave.$__original_save({ __noPromise: true }, callbackWrapper);
+        } else {
+          toSave.save({ __noPromise: true }, callbackWrapper);
+        }
+      });
     });
 
-  }
-  // } else {
-  //   var last  = arguments[arguments.length - 1];
+    parallel(toExecute, function(error, savedDocs) {
+      if (error) {
+        if (cb) {
+          cb(error);
+        } else {
+          reject(error);
+        }
+        return;
+      }
 
-  //   if ('function' == typeof last) {
-  //     // promise.onResolve(last);
-  //     args = utils.args(arguments, 0, arguments.length - 1);
-  //   } else {
-  //     args = utils.args(arguments);
-  //   }
-  // }
+      if (doc instanceof Array) {
+        resolve(savedDocs);
+        cb && cb.call(_this, null, savedDocs);
+      } else {
+        resolve.apply(promise, savedDocs);
+        if (cb) {
+          savedDocs.unshift(null);
+          cb.apply(_this, savedDocs);
+        }
+      }
+    });
+  });
 
-  // var count = args.length;
-  //
-  // if (0 === count) {
-  //   promise.complete();
-  //   return promise;
-  // }
-
-
-  // var docs = [];
-
-  // args.forEach(function (arg, i) {
-  //   var doc = new self(arg);
-  //   docs[i] = doc;
-  //   doc.save(function (err) {
-  //     if (err) {
-  //       return promise.error(err);
-  //     }
-  //     //--count || promise.complete.apply(promise, docs);
-  //   });
-  // });
-
-  // return promise;
+  return promise;
 };
 
 /*
@@ -594,8 +527,18 @@ Model.__escapeQuery = function(obj) {
 //   return this.findOne({ row: id }, fields, options, callback);
 // };
 
+Model.count = function count(conditions, callback) {
+  if (typeof conditions === 'function') {
+    callback = conditions;
+    conditions = undefined;
+  }
+  return this.find(conditions, [ 'count(*)' ], 1, function(error, data) {
+    callback(error, data._doc.count);
+  });
+};
+
+
 Model.find = function find (conditions, fields, limit, callback) {
-  // console.log('[cassandrom] find');
   if ('function' == typeof limit) {
     callback = limit;
     limit = null;
@@ -624,9 +567,15 @@ Model.find = function find (conditions, fields, limit, callback) {
         reject(error);
         return;
       }
-      var data = self.$__parseData(self, result, limit === 1);
-      _results = [error, data];
-      resolve(data);
+      self.$__parseData(self, fields, result, limit, function(error, data) {
+        _results = [error, data];
+        if(error) {
+          console.log('[cassandrom] Query error: ' + error);
+          reject(error);
+        } else {
+          resolve(data);
+        }
+      });
     });
   });
 
@@ -640,6 +589,7 @@ Model.find = function find (conditions, fields, limit, callback) {
       }).
       catch(function(error) {
         setImmediate(function() {
+          console.log('[cassandrom] Error ' + self.model + ', ' + error);
           self.model.emit('error', error);
         });
       });
@@ -664,54 +614,129 @@ promise.exec = function(op, callback) {
   });
 };
 
-  // this.base.execute(select.query, select.params, {prepare: true}, this.$__result(callback, limit === 1));
+promise.populate = function(name) {
+
+};
+
+promise.count = function(conditions, callback) {
+  return self.count(conditions, callback);
+};
+
+promise.limit = function(ll) {
+  limit = ll;
+};
+
+promise.skip = function(skip) {
+
+};
+
+promise.sort = function(sort) {
+
+};
 
   return promise;
 }
 
-Model.findOne = function findOne (conditions, fields, callback) {
-  // console.log('[cassandrom] findOne');
-  if ('function' == typeof fields) {
-    callback = fields;
-    fields = null;
-  } else if ('function' == typeof conditions) {
+Model.findOne = function findOne (conditions, projection, options, callback) {
+  if (typeof options === 'function') {
+    callback = options;
+    options = null;
+  } else if (typeof projection === 'function') {
+    callback = projection;
+    projection = null;
+    options = null;
+  } else if (typeof conditions === 'function') {
     callback = conditions;
     conditions = {};
-    fields = null;
+    projection = null;
+    options = null;
   }
-  return this.find(conditions, fields, 1, callback);
+
+  return this.find(conditions, projection, 1, callback);
 };
 
-Model.$__result = function(callback, one) {
+Model.findById = function findById(id, projection, options, callback) {
+  if (typeof id === 'undefined') {
+    id = null;
+  }
+
+  return this.findOne({_id: id}, projection, options, callback);
+};
+
+Model.$__result = function(callback, limit) {
   var self = this;
   return function(error, result) {
-    var data = null;
+
     if(error) {
       console.log('[cassandrom] Query error: ' + error);
+      callback(error);
     } else {
-      data = self.$__parseData(self, result, one);
+      self.$__parseData(self, undefined, result, limit, callback);
     }
-    callback(error, data);
   };
 };
+/*
+function completeOne(model, doc, res, fields, self, pop, callback) {
+  var opts = pop ?
+  {populated: pop}
+      : undefined;
 
-Model.$__parseData = function(model, data, one) {
+console.log('completeOne model ' + model._);
+  var casted = helpers.createModel(model, doc, fields);
+  console.log('completeOne ' + casted._);
+  casted.init(doc, opts, function(err) {
+    if (err) {
+      return callback(err);
+    }
+    console.log('completeOne  init ' + casted._);
+    if (res) {
+      return callback(null, casted, res);
+    }
+    callback(null, casted);
+  });
+}
+*/
+
+Model.$__parseData = function(model, fields, data, limit, callback) {
   var list = [];
   if(data.rows && data.rows.length > 0) {
-    var i = 0, obj, p, size = one ? 1 : data.rows.length;
+    var i = 0, obj, p, size = (limit  && limit > 0) ? limit : data.rows.length;
+
+    // var len = count;
+    // function init(err) {
+    //   if (err) return callback(err);
+    //   --count || callback(null, arr);
+    // }
+    var count = size;
     for(; i < size; i++) {
-      obj = new model( data.rows[i] );
+      // undefined, fields, true
       list.push( obj );
+      obj = new model( undefined, fields, true); //data.rows[i] );
+      obj.init(data.rows[i], undefined, function(err) {
+        --count;
+        if (err) {
+          return callback(err);
+        }
+        if(count === 0) {
+          callback(null, limit === 1 ? obj : list);
+        }
+      });
+
+  // new model(undefined, fields, true);
+
+
     }
+  } else {
+    callback(null, limit === 1 ? null : []);
   }
-  if(list.length > 0) {
-    if(one) {
-      return list[0];
-    } else {
-      return list;
-    }
-  }
-  return null;
+  // if(list.length > 0) {
+  //   if(one) {
+  //     return list[0];
+  //   } else {
+  //     return list;
+  //   }
+  // }
+  // return null;
 };
 
 Model.prototype.$__setSchema = function (schema) {
@@ -733,6 +758,7 @@ Model.compile = function compile (name, schema, collectionName, base) {
   };
 
   model.base = model.prototype.base = base;
+  model.modelName = name;
 
   if (!(model.prototype instanceof Model)) {
     model.__proto__ = Model;
@@ -743,14 +769,16 @@ Model.compile = function compile (name, schema, collectionName, base) {
   // model.db = model.prototype.db = connection;
 
   model.prototype.$__setSchema(schema);
-  model.schema = model.prototype.schema;
 
   model.prototype.$__setModelName(name);
-  model.modelName = model.prototype.modelName;
+  // model.modelName = model.prototype.modelName;
 
   // apply methods and statics
   applyMethods(model, schema);
   applyStatics(model, schema);
+
+  model.schema = model.prototype.schema;
+  model.collection = model.prototype.collection;
 
   model.options = model.prototype.options;
 
@@ -843,42 +871,6 @@ function define (prop, subprops, prototype, prefix, keys) {
   }
 };
 
-Model.prototype.getValue = function (path) {
-  console.log(" ##### " + this._doc[path] + ' path ' + path);
-  return this._doc[path];
-  //return utils.getValue(path, this._doc);
-}
-
-Model.prototype.setValue = function (path, val) {
-  utils.setValue(path, val, this._doc);
-  return this;
-}
-
-Model.prototype.get = function (path, type) {
-  //console.log('model get ' + path + '  ' + type);
-  // var adhocs;
-  // if (type) {
-  //   adhocs = this.$__.adhocPaths || (this.$__.adhocPaths = {});
-  //   adhocs[path] = Schema.interpretAsType(path, type);
-  // }
-  // schema.options.name.split('.') //
-
-  var schema = this.schema.path(path)
-    , pieces = path.split('.')
-    , obj = this._doc;
-
-  for (var i = 0, l = pieces.length; i < l; i++) {
-    obj = undefined === obj || null === obj
-      ? undefined
-      : obj[pieces[i]];
-  }
-// console.log('get ' + path + ' -> ' + obj + '  ' + JSON.stringify(schema));
-  if (schema) {
-    obj = schema.applyGetters(obj, this);
-  }
-
-  return obj;
-};
 
 Model.prototype.toObject = function (options) {
   if (options && options.depopulate /* && this.$__.wasPopulated */ ) {

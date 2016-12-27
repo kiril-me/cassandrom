@@ -22,8 +22,13 @@
   },
   "homepage": "https://github.com/lookify/cassandrom",
   "dependencies": {
+    "async": "^2.1.4",
     "bluebird": "^3.4.6",
     "cassandra-driver": "^3.1.6",
+    "hooks-fixed": "^1.2.0",
+    "kareem": "^1.1.5",
+    "mpath": "^0.2.1",
+    "sliced": "^1.0.1",
     "uuid": "^3.0.1"
   }
 }

@@ -10,10 +10,8 @@ var SchemaType = require('../schematype')
   };
 
 function SchemaCollection (key, cast, options) {
-  console.log('collection ', key, cast, options);
   if (cast) {
     var castOptions = {};
-
     if ('Object' === cast.constructor.name) {
       if (cast.type) {
         // support { type: Woot }
@@ -50,7 +48,6 @@ function SchemaCollection (key, cast, options) {
 }
 
 SchemaCollection.prototype.cast = function (value, doc, init) {
-  console.log('collection cast');
   return value;
 };
 
