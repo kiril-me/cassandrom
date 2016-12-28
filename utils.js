@@ -1,5 +1,6 @@
 var sliced = require('sliced');
 var mpath = require('mpath');
+var Document;
 
 var toString = Object.prototype.toString;
 
@@ -127,4 +128,129 @@ exports.object.hasOwnProperty = function(obj, prop) {
   return hop.call(obj, prop);
 };
 
+exports.getFunctionName = function(fn) {
+  if (fn.name) {
+    return fn.name;
+  }
+  return (fn.toString().trim().match(/^function\s*([^\s(]+)/) || [])[1];
+};
 
+exports.isNullOrUndefined = function(val) {
+  return val === null || val === undefined;
+};
+
+exports.toObject = function toObject(obj) {
+  Document || (Document = require('./document'));
+  var ret;
+
+  if (exports.isNullOrUndefined(obj)) {
+    return obj;
+  }
+
+  if (obj instanceof Document) {
+    return obj.toObject();
+  }
+
+  if (Array.isArray(obj)) {
+    ret = [];
+
+    for (var i = 0, len = obj.length; i < len; ++i) {
+      ret.push(toObject(obj[i]));
+    }
+
+    return ret;
+  }
+
+  if ((obj.constructor && exports.getFunctionName(obj.constructor) === 'Object') ||
+      (!obj.constructor && exports.isObject(obj))) {
+    ret = {};
+
+    for (var k in obj) {
+      ret[k] = toObject(obj[k]);
+    }
+
+    return ret;
+  }
+
+  return obj;
+};
+
+exports.merge = function merge(to, from, options) {
+  options = options || {};
+  var keys = Object.keys(from);
+  var i = 0;
+  var len = keys.length;
+  var key;
+
+  if (options.retainKeyOrder) {
+    while (i < len) {
+      key = keys[i++];
+      if (typeof to[key] === 'undefined') {
+        to[key] = from[key];
+      } else if (exports.isObject(from[key])) {
+        merge(to[key], from[key]);
+      } else if (options.overwrite) {
+        to[key] = from[key];
+      }
+    }
+  } else {
+    while (len--) {
+      key = keys[len];
+      if (typeof to[key] === 'undefined') {
+        to[key] = from[key];
+      } else if (exports.isObject(from[key])) {
+        merge(to[key], from[key]);
+      } else if (options.overwrite) {
+        to[key] = from[key];
+      }
+    }
+  }
+};
+
+exports.mergeClone = function(to, fromObj) {
+  var keys = Object.keys(fromObj);
+  var len = keys.length;
+  var i = 0;
+  var key;
+
+  while (i < len) {
+    key = keys[i++];
+    if (typeof to[key] === 'undefined') {
+      // make sure to retain key order here because of a bug handling the $each
+      // operator in mongodb 2.4.4
+      to[key] = exports.clone(fromObj[key], {retainKeyOrder: 1});
+    } else {
+      if (exports.isObject(fromObj[key])) {
+        var obj = fromObj[key];
+        //if (isMongooseObject(fromObj[key]) && !fromObj[key].isMongooseBuffer) {
+        //  obj = obj.toObject({ transform: false, virtuals: false });
+        //}
+        //if (fromObj[key].isMongooseBuffer) {
+        //  obj = new Buffer(obj);
+        //}
+        exports.mergeClone(to[key], obj);
+      } else {
+        // make sure to retain key order here because of a bug handling the
+        // $each operator in mongodb 2.4.4
+        to[key] = exports.clone(fromObj[key], {retainKeyOrder: 1});
+      }
+    }
+  }
+};
+
+exports.tick = function tick(callback) {
+  if (typeof callback !== 'function') {
+    return;
+  }
+  return function() {
+    try {
+      callback.apply(this, arguments);
+    } catch (err) {
+      // only nextTick on err to get out of
+      // the event loop and avoid state corruption.
+      process.nextTick(function() {
+        throw err;
+      });
+    }
+  };
+};

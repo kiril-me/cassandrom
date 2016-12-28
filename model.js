@@ -1,5 +1,5 @@
 var Document = require('./document');
-
+var Query = require('./query');
 var parallel = require('async/parallel');
 
 var utils = require('./utils');
@@ -530,29 +530,33 @@ Model.__escapeQuery = function(obj) {
 Model.count = function count(conditions, callback) {
   if (typeof conditions === 'function') {
     callback = conditions;
-    conditions = undefined;
+    conditions = {};
   }
-  return this.find(conditions, [ 'count(*)' ], 1, function(error, data) {
-    callback(error, data._doc.count);
-  });
+
+  var query = new Query({}, this, {});
+  return query.count(conditions, callback);
 };
 
-
-Model.find = function find (conditions, fields, limit, callback) {
-  if ('function' == typeof limit) {
-    callback = limit;
-    limit = null;
-  } else if ('function' == typeof fields) {
-    callback = fields;
-    fields = null;
-    limit = null;
-  } else if ('function' == typeof conditions) {
+Model.find = function find (conditions, projection, options, callback) {
+  if (typeof conditions === 'function') {
     callback = conditions;
     conditions = {};
-    fields = null;
-    limit = null;
+    projection = null;
+    options = null;
+  } else if (typeof projection === 'function') {
+    callback = projection;
+    projection = null;
+    options = null;
+  } else if (typeof options === 'function') {
+    callback = options;
+    options = null;
   }
 
+  var query = new Query({}, this, {});
+  query.select(projection);
+  query.setOptions(options);
+  return query.find(conditions, callback);
+/*
   var self = this;
   var _results;
   var promise = new Promise(function(resolve, reject) {
@@ -635,6 +639,7 @@ promise.sort = function(sort) {
 };
 
   return promise;
+  */
 }
 
 Model.findOne = function findOne (conditions, projection, options, callback) {
@@ -652,7 +657,10 @@ Model.findOne = function findOne (conditions, projection, options, callback) {
     options = null;
   }
 
-  return this.find(conditions, projection, 1, callback);
+  var query = new Query({}, this, {});
+  query.select(projection);
+  query.setOptions(options);
+  return query.findOne(conditions, callback);
 };
 
 Model.findById = function findById(id, projection, options, callback) {
@@ -696,6 +704,7 @@ console.log('completeOne model ' + model._);
   });
 }
 */
+
 
 Model.$__parseData = function(model, fields, data, limit, callback) {
   var list = [];
@@ -757,6 +766,7 @@ Model.compile = function compile (name, schema, collectionName, base) {
     Model.call(this, doc, fields, skipId);
   };
 
+  model.hooks = schema.s.hooks.clone();
   model.base = model.prototype.base = base;
   model.modelName = name;
 

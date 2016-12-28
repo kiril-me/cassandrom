@@ -88,7 +88,7 @@ Schema.prototype.instanceOfSchema = true;
 Schema.prototype.tree;
 Schema.prototype.paths;
 Schema.prototype.obj;
-
+/*
 Schema.prototype.select = function(modelName, conditions, fields, limit) {
   var select = this.selectFields(fields);
   var params = [];
@@ -120,6 +120,7 @@ Schema.prototype.select = function(modelName, conditions, fields, limit) {
     params: params
   };
 };
+*/
 
 Schema.prototype._insertValue = function(path, obj, name, fields, params, validationError) {
   var value = obj[name];
@@ -229,7 +230,7 @@ Schema.prototype.insert = function(modelName, obj, fields) {
   };
 };
 
-
+/*
 Schema.prototype._select = function(name) {
   var schema = this.paths[name];
   var select = null;
@@ -252,6 +253,7 @@ Schema.prototype._select = function(name) {
   }
   return select;
 };
+*/
 
 var CQL_FUNCTIONS = {
   'count': true
@@ -265,7 +267,7 @@ function _isFunction(field) {
   }
   return false;
 };
-
+/*
 Schema.prototype.selectFields = function(fields) {
   var list =[];
   if(fields && Array.isArray(fields)) {
@@ -310,6 +312,7 @@ Schema.prototype.selectFields = function(fields) {
   }
   return select;
 };
+*/
 
 Schema.prototype.add = function add (obj, prefix) {
   prefix = prefix || '';
@@ -911,5 +914,15 @@ Schema.prototype.requiredPaths = function requiredPaths(invalidate) {
   return this._requiredpaths;
 };
 
+Schema.prototype.eachPath = function(fn) {
+  var keys = Object.keys(this.paths),
+      len = keys.length;
+
+  for (var i = 0; i < len; ++i) {
+    fn(keys[i], this.paths[keys[i]]);
+  }
+
+  return this;
+};
 
 module.exports = exports = Schema;
