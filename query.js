@@ -6,7 +6,9 @@ function Query(conditions, model, options) {
   this.model = model
   this.schema = model.schema;
   this._fields = null;
-  this.options = {};
+  this.options = {
+   // populate: {}
+  };
   this._conditions = conditions;
   this._limit = null;
   this._skip = null;
@@ -158,7 +160,18 @@ Query.prototype._find = function(callback) {
     if (err) {
       return callback(err);
     }
-    _this.__parseData(fields, docs, callback);
+    if (_this.options.populate) {
+      var pop = utils.object.vals( _this.options.populate );
+      _this.model.populate(docs, pop, function(err, docs) {
+        if (err) {
+          return callback(err);
+        }
+        _this.__parseData(fields, docs, callback);
+      });
+    } else {
+      _this.__parseData(fields, docs, callback);
+    }
+
 
     // if (docs.length === 0) {
     //   return callback(null, docs);
@@ -308,7 +321,20 @@ Query.prototype._findOne = function(callback) {
     if (err) {
       return callback(err);
     }
-    _this.__parseDataOne(fields, docs, callback);
+
+    //console.log('populate', _this.options.populate);
+
+    if (_this.options.populate) {
+      var pop = utils.object.vals( _this.options.populate );
+      _this.model.populate(docs, pop, function(err, docs) {
+        if (err) {
+          return callback(err);
+        }
+        _this.__parseDataOne(fields, docs, callback);
+      });
+    } else {
+      _this.__parseDataOne(fields, docs, callback);
+    }
   };
   this._select(fields, this._conditions, 1, this._sort, cb);
 /*
@@ -610,16 +636,14 @@ Query.prototype.select = function(fields) {
 }
 
 Query.prototype.populate = function() {
-  console.log('pop: ', arguments);
-  /*
+  console.log('###');
   var res = utils.populate.apply(null, arguments);
-  var opts = this._mongooseOptions;
-
-  if (!utils.isObject(opts.populate)) {
-    opts.populate = {};
+  if(!this.options.populate) {
+    this.options.populate = {};
   }
+  var pop = this.options.populate;
 
-  var pop = opts.populate;
+  console.log('pppp ', arguments, res, pop);
 
   for (var i = 0; i < res.length; ++i) {
     var path = res[i].path;
@@ -628,12 +652,14 @@ Query.prototype.populate = function() {
     }
     pop[res[i].path] = res[i];
   }
-*/
+
+
   return this;
 };
 
+
 Query.prototype.skip = function(skip) {
-  console.log('skip ' + skip);
+  // console.log('skip ' + skip);
   this._skip = skip;
 };
 
@@ -707,6 +733,7 @@ Query.prototype.getQuery = function() {
 
 Query.prototype.setOptions = function(options, overwrite) {
   if(options) {
+    console.log('set options ', options);
     this.options = options;
   } else {
     this.options = {};

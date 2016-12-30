@@ -7,6 +7,10 @@ var error = require('./error');
 var Promise = require('./promise');
 var EventEmitter = require('events').EventEmitter;
 
+var VERSION_WHERE = 1,
+    VERSION_INC = 2,
+    VERSION_ALL = VERSION_WHERE | VERSION_INC;
+
 //var when = require('when');
 
 function Model(doc, fields) {
@@ -267,7 +271,7 @@ Model.prototype.$__handleSave = function(options, callback) {
         return;
       }
 
-      var update = this.schema.update(this.modelName, this, where, delta[1], options), self = this;
+      var update = this.schema.update(this.modelName, this, where, delta[1]['$set'], options), self = this;
       if(update.error) {
         callback(update.error);
       } else {
@@ -296,6 +300,177 @@ Model.prototype.$__handleSave = function(options, callback) {
     this.emit('isNew', false);
   }
 };
+
+Model.prototype.$__where = function _where(where) {
+  where || (where = {});
+
+  var paths,
+      len;
+
+  if (!where.id) {
+    where.id = this._doc.id;
+  }
+
+  if (this.$__.shardval) {
+    paths = Object.keys(this.$__.shardval);
+    len = paths.length;
+
+    for (var i = 0; i < len; ++i) {
+      where[paths[i]] = this.$__.shardval[paths[i]];
+    }
+  }
+
+// TODO set id
+  if (this._doc.id == null) {
+    return new Error('No _id found on document!');
+  }
+
+  return where;
+};
+
+Model.prototype.$__delta = function() {
+  var dirty = this.$__dirty();
+  if (!dirty.length && VERSION_ALL !== this.$__.version) return;
+
+  var where = {},
+      delta = {},
+      len = dirty.length,
+      divergent = [],
+      d = 0;
+/* TODO
+  where._id = this._doc._id;
+  console.log('delta', where._id);
+  if (where._id.toObject) {
+    where._id = where._id.toObject({ transform: false, depopulate: true });
+  }
+*/
+  where.id = this._doc.id;
+  //console.log('delta', where.id);
+  if (where.id.toObject) {
+    where.id = where.id.toObject({ transform: false, depopulate: true });
+  }
+
+  for (; d < len; ++d) {
+    var data = dirty[d];
+    var value = data.value;
+
+    var match = checkDivergentArray(this, data.path, value);
+    if (match) {
+      divergent.push(match);
+      continue;
+    }
+
+    var pop = this.populated(data.path, true);
+    if (!pop && this.$__.selected) {
+      // If any array was selected using an $elemMatch projection, we alter the path and where clause
+      // NOTE: MongoDB only supports projected $elemMatch on top level array.
+      var pathSplit = data.path.split('.');
+      var top = pathSplit[0];
+      if (this.$__.selected[top] && this.$__.selected[top].$elemMatch) {
+        // If the selected array entry was modified
+        if (pathSplit.length > 1 && pathSplit[1] == 0 && typeof where[top] === 'undefined') {
+          where[top] = this.$__.selected[top];
+          pathSplit[1] = '$';
+          data.path = pathSplit.join('.');
+        }
+        // if the selected array was modified in any other way throw an error
+        else {
+          divergent.push(data.path);
+          continue;
+        }
+      }
+    }
+
+    if (divergent.length) continue;
+
+    if (undefined === value) {
+      operand(this, where, delta, data, 1, '$unset');
+    } else if (value === null) {
+      operand(this, where, delta, data, null);
+    } else if (value._path && value._atomics) {
+      // arrays and other custom types (support plugins etc)
+      handleAtomics(this, where, delta, data, value);
+    } else if (value._path && Buffer.isBuffer(value)) {
+      // MongooseBuffer
+      value = value.toObject();
+      operand(this, where, delta, data, value);
+    } else {
+      value = utils.clone(value, {depopulate: 1, _isNested: true});
+      operand(this, where, delta, data, value);
+    }
+  }
+
+  if (divergent.length) {
+    return new DivergentArrayError(divergent);
+  }
+
+  if (this.$__.version) {
+    this.$__version(where, delta);
+  }
+
+  return [where, delta];
+};
+
+function operand(self, where, delta, data, val, op) {
+  // delta
+  op || (op = '$set');
+
+  if (!delta[op]) delta[op] = {};
+  delta[op][data.path] = val;
+
+  // disabled versioning?
+  if (self.schema.options.versionKey === false) return;
+
+  // path excluded from versioning?
+  if (shouldSkipVersioning(self, data.path)) return;
+
+  // already marked for versioning?
+  if (VERSION_ALL === (VERSION_ALL & self.$__.version)) return;
+
+  switch (op) {
+    case '$set':
+    case '$unset':
+    case '$pop':
+    case '$pull':
+    case '$pullAll':
+    case '$push':
+    case '$pushAll':
+    case '$addToSet':
+      break;
+    default:
+      // nothing to do
+      return;
+  }
+
+  // ensure updates sent with positional notation are
+  // editing the correct array element.
+  // only increment the version if an array position changes.
+  // modifying elements of an array is ok if position does not change.
+
+  if (op === '$push' || op === '$pushAll' || op === '$addToSet') {
+    self.$__.version = VERSION_INC;
+  } else if (/^\$p/.test(op)) {
+    // potentially changing array positions
+    self.increment();
+  } else if (Array.isArray(val)) {
+    // $set an array
+    self.increment();
+  } else if (/\.\d+\.|\.\d+$/.test(data.path)) {
+    // now handling $set, $unset
+    // subpath of array
+    self.$__.version = VERSION_WHERE;
+  }
+}
+
+function shouldSkipVersioning(self, path) {
+  var skipVersioning = self.schema.options.skipVersioning;
+  if (!skipVersioning) return false;
+
+  // Remove any array indexes from the path
+  path = path.replace(/\.\d+\./, '.');
+
+  return skipVersioning[path];
+}
 
 
 Model.prototype.$__try = function (fn, scope) {
@@ -642,6 +817,396 @@ promise.sort = function(sort) {
   */
 }
 
+
+Model.populate = function(docs, paths, callback) {
+  var _this = this;
+  // if (callback) {
+  //   callback = this.$wrapCallback(callback);
+  // }
+
+  // normalized paths
+  var noPromise = paths && !!paths.__noPromise;
+  paths = utils.populate(paths);
+
+  // data that should persist across subPopulate calls
+  var cache = {};
+
+  if (noPromise) {
+    _populate(this, docs, paths, cache, callback);
+  } else {
+    return new Promise(function(resolve, reject) {
+      _populate(_this, docs, paths, cache, function(error, docs) {
+        if (error) {
+          callback && callback(error);
+          reject(error);
+        } else {
+          callback && callback(null, docs);
+          resolve(docs);
+        }
+      });
+    });
+  }
+};
+
+function _populate(model, docs, paths, cache, callback) {
+  var pending = paths.length;
+
+  if (pending === 0) {
+    return callback(null, docs);
+  }
+
+  // each path has its own query options and must be executed separately
+  var i = pending;
+  var path;
+  while (i--) {
+    path = paths[i];
+    populate(model, docs, path, next);
+  }
+
+  function next(err) {
+    if (err) {
+      return callback(err);
+    }
+    if (--pending) {
+      return;
+    }
+    callback(null, docs);
+  }
+}
+
+function populate(model, docs, options, callback) {
+  var modelsMap;
+
+  // normalize single / multiple docs passed
+  if (!Array.isArray(docs)) {
+    docs = [docs];
+  }
+
+  if (docs.length === 0 || docs.every(utils.isNullOrUndefined)) {
+    return callback();
+  }
+
+  modelsMap = getModelsMapForPopulate(model, docs, options);
+
+  var i, len = modelsMap.length,
+      mod, match, select, vals = [];
+
+  function flatten(item) {
+    // no need to include undefined values in our query
+    return undefined !== item;
+  }
+
+  var _remaining = len;
+  var hasOne = false;
+  for (i = 0; i < len; i++) {
+    mod = modelsMap[i];
+    select = mod.options.select;
+
+    if (mod.options.match) {
+      match = utils.object.shallowCopy(mod.options.match);
+    } else {
+      match = {};
+    }
+
+    var ids = utils.array.flatten(mod.ids, flatten);
+    ids = utils.array.unique(ids);
+
+    if (ids.length === 0 || ids.every(utils.isNullOrUndefined)) {
+      --_remaining;
+      continue;
+    }
+
+    hasOne = true;
+    if (mod.foreignField !== '_id' || !match['_id']) {
+      match[mod.foreignField] = { $in: ids };
+    }
+
+    var assignmentOpts = {};
+    assignmentOpts.sort = mod.options.options && mod.options.options.sort || undefined;
+    assignmentOpts.excludeId = excludeIdReg.test(select) || (select && select._id === 0);
+
+    if (assignmentOpts.excludeId) {
+      // override the exclusion from the query so we can use the _id
+      // for document matching during assignment. we'll delete the
+      // _id back off before returning the result.
+      if (typeof select === 'string') {
+        select = select.replace(excludeIdRegGlobal, ' ');
+      } else {
+        // preserve original select conditions by copying
+        select = utils.object.shallowCopy(select);
+        delete select._id;
+      }
+    }
+
+    if (mod.options.options && mod.options.options.limit) {
+      assignmentOpts.originalLimit = mod.options.options.limit;
+      mod.options.options.limit = mod.options.options.limit * ids.length;
+    }
+
+    var subPopulate = mod.options.populate;
+    var query = mod.Model.find(match, select, mod.options.options);
+    if (subPopulate) {
+      query.populate(subPopulate);
+    }
+
+    query.exec(next.bind(this, mod, assignmentOpts));
+  }
+
+  if (!hasOne) {
+    return callback();
+  }
+
+  function next(options, assignmentOpts, err, valsFromDb) {
+    if (err) return callback(err);
+    vals = vals.concat(valsFromDb);
+    _assign(null, vals, options, assignmentOpts);
+    if (--_remaining === 0) {
+      callback();
+    }
+  }
+
+  function _assign(err, vals, mod, assignmentOpts) {
+    if (err) return callback(err);
+
+    var options = mod.options;
+    var _val;
+    var lean = options.options && options.options.lean,
+        len = vals.length,
+        rawOrder = {}, rawDocs = {}, key, val;
+
+    // optimization:
+    // record the document positions as returned by
+    // the query result.
+    for (var i = 0; i < len; i++) {
+      val = vals[i];
+      if (val) {
+        _val = utils.getValue(mod.foreignField, val);
+        if (Array.isArray(_val)) {
+          var _valLength = _val.length;
+          for (var j = 0; j < _valLength; ++j) {
+            if (_val[j] instanceof Document) {
+              _val[j] = _val[j]._id;
+            }
+            key = String(_val[j]);
+            if (rawDocs[key]) {
+              if (Array.isArray(rawDocs[key])) {
+                rawDocs[key].push(val);
+                rawOrder[key].push(i);
+              } else {
+                rawDocs[key] = [rawDocs[key], val];
+                rawOrder[key] = [rawOrder[key], i];
+              }
+            } else {
+              rawDocs[key] = val;
+              rawOrder[key] = i;
+            }
+          }
+        } else {
+          if (_val instanceof Document) {
+            _val = _val._id;
+          }
+          key = String(_val);
+          if (rawDocs[key]) {
+            if (Array.isArray(rawDocs[key])) {
+              rawDocs[key].push(val);
+              rawOrder[key].push(i);
+            } else {
+              rawDocs[key] = [rawDocs[key], val];
+              rawOrder[key] = [rawOrder[key], i];
+            }
+          } else {
+            rawDocs[key] = val;
+            rawOrder[key] = i;
+          }
+        }
+        // flag each as result of population
+        if (!lean) {
+          val.$__.wasPopulated = true;
+        }
+      }
+    }
+
+    assignVals({
+      originalModel: model,
+      rawIds: mod.ids,
+      localField: mod.localField,
+      foreignField: mod.foreignField,
+      rawDocs: rawDocs,
+      rawOrder: rawOrder,
+      docs: mod.docs,
+      path: options.path,
+      options: assignmentOpts,
+      justOne: mod.justOne,
+      isVirtual: mod.isVirtual
+    });
+  }
+}
+
+function getModelsMapForPopulate(model, docs, options) {
+  var i, doc, len = docs.length,
+      available = {},
+      map = [],
+      modelNameFromQuery = options.model && options.model.modelName || options.model,
+      schema, refPath, Model, currentOptions, modelNames, modelName, discriminatorKey, modelForFindSchema;
+
+  var originalOptions = utils.clone(options);
+  var isVirtual = false;
+
+  schema = model._getSchema(options.path);
+
+  if (schema && schema.caster) {
+    schema = schema.caster;
+  }
+
+  if (!schema && model.discriminators) {
+    discriminatorKey = model.schema.discriminatorMapping.key;
+  }
+
+  refPath = schema && schema.options && schema.options.refPath;
+
+  for (i = 0; i < len; i++) {
+    doc = docs[i];
+
+    if (refPath) {
+      modelNames = utils.getValue(refPath, doc);
+      if (Array.isArray(modelNames)) {
+        modelNames = modelNames.filter(function(v) {
+          return v != null;
+        });
+      }
+    } else {
+      if (!modelNameFromQuery) {
+        var modelForCurrentDoc = model;
+        var schemaForCurrentDoc;
+
+        if (!schema && discriminatorKey) {
+          modelForFindSchema = utils.getValue(discriminatorKey, doc);
+
+          if (modelForFindSchema) {
+            modelForCurrentDoc = model.db.model(modelForFindSchema);
+            schemaForCurrentDoc = modelForCurrentDoc._getSchema(options.path);
+
+            if (schemaForCurrentDoc && schemaForCurrentDoc.caster) {
+              schemaForCurrentDoc = schemaForCurrentDoc.caster;
+            }
+          }
+        } else {
+          schemaForCurrentDoc = schema;
+        }
+        var virtual = modelForCurrentDoc.schema._getVirtual(options.path);
+
+        if (schemaForCurrentDoc && schemaForCurrentDoc.options && schemaForCurrentDoc.options.ref) {
+          modelNames = [schemaForCurrentDoc.options.ref];
+        } else if (virtual && virtual.options && virtual.options.ref) {
+          modelNames = [virtual && virtual.options && virtual.options.ref];
+          isVirtual = true;
+        } else {
+          modelNames = null;
+        }
+      } else {
+        modelNames = [modelNameFromQuery];  // query options
+      }
+    }
+
+    if (!modelNames) {
+      continue;
+    }
+
+    if (!Array.isArray(modelNames)) {
+      modelNames = [modelNames];
+    }
+
+    virtual = model.schema._getVirtual(options.path);
+    var localField = virtual && virtual.options ?
+      (virtual.$nestedSchemaPath ? virtual.$nestedSchemaPath + '.' : '') + virtual.options.localField :
+      options.path;
+    var foreignField = virtual && virtual.options ?
+      virtual.options.foreignField :
+      '_id';
+    var justOne = virtual && virtual.options && virtual.options.justOne;
+    if (virtual && virtual.options && virtual.options.ref) {
+      isVirtual = true;
+    }
+
+    if (virtual && (!localField || !foreignField)) {
+      throw new Error('If you are populating a virtual, you must set the ' +
+        'localField and foreignField options');
+    }
+
+    options.isVirtual = isVirtual;
+    var ret = convertTo_id(utils.getValue(localField, doc));
+    var id = String(utils.getValue(foreignField, doc));
+    options._docs[id] = Array.isArray(ret) ? ret.slice() : ret;
+    if (doc.$__) {
+      doc.populated(options.path, options._docs[id], options);
+    }
+
+    var k = modelNames.length;
+    while (k--) {
+      modelName = modelNames[k];
+
+      Model = originalOptions.model && originalOptions.model.modelName ?
+        originalOptions.model :
+        model.base.model(modelName);
+
+      if (!available[modelName]) {
+        currentOptions = {
+          model: Model
+        };
+
+        if (isVirtual && virtual.options && virtual.options.options) {
+          currentOptions.options = utils.clone(virtual.options.options, {
+            retainKeyOrder: true
+          });
+        }
+        utils.merge(currentOptions, options);
+        if (schema && !discriminatorKey) {
+          currentOptions.model = Model;
+        }
+        options.model = Model;
+
+        available[modelName] = {
+          Model: Model,
+          options: currentOptions,
+          docs: [doc],
+          ids: [ret],
+          // Assume only 1 localField + foreignField
+          localField: localField,
+          foreignField: foreignField,
+          justOne: justOne,
+          isVirtual: isVirtual
+        };
+        map.push(available[modelName]);
+      } else {
+        available[modelName].docs.push(doc);
+        available[modelName].ids.push(ret);
+      }
+    }
+  }
+
+  return map;
+}
+
+function convertTo_id(val) {
+  if (val instanceof Model) return val._id;
+
+  if (Array.isArray(val)) {
+    for (var i = 0; i < val.length; ++i) {
+      if (val[i] instanceof Model) {
+        val[i] = val[i]._id;
+      }
+    }
+    if (val.isMongooseArray) {
+      return val._schema.cast(val, val._parent);
+    }
+
+    return [].concat(val);
+  }
+
+  return val;
+}
+
+
 Model.findOne = function findOne (conditions, projection, options, callback) {
   if (typeof options === 'function') {
     callback = options;
@@ -757,6 +1322,10 @@ Model.prototype.$__setModelName = function (modelName) {
   this.modelName = modelName;
 }
 
+Model._getSchema = function _getSchema(path) {
+  return this.schema._getSchema(path);
+};
+
 Model.compile = function compile (name, schema, collectionName, base) {
   // generate new class
   function model (doc, fields, skipId) {
@@ -862,7 +1431,9 @@ function define (prop, subprops, prototype, prefix, keys) {
           return this.$__.getters[path];
         }
       , set: function (v) {
-          if (v instanceof Document) v = v.toObject();
+          if (v instanceof Document) {
+            v = v.toObject();
+          }
           return (this.$__.scope || this).set(path, v);
         }
     });
@@ -882,64 +1453,64 @@ function define (prop, subprops, prototype, prefix, keys) {
 };
 
 
-Model.prototype.toObject = function (options) {
-  if (options && options.depopulate /* && this.$__.wasPopulated */ ) {
-    // populated paths that we set to a document
-    return utils.clone(this._id, options);
-  }
+// Model.prototype.toObject = function (options) {
+//   if (options && options.depopulate /* && this.$__.wasPopulated */ ) {
+//     // populated paths that we set to a document
+//     return utils.clone(this._id, options);
+//   }
 
-  // When internally saving this document we always pass options,
-  // bypassing the custom schema options.
-  var optionsParameter = options;
-  if (!(options && 'Object' == options.constructor.name) ||
-      (options && options._useSchemaOptions)) {
-    options = this.schema.options.toObject
-      ? utils.clone(this.schema.options.toObject)
-      : {};
-  }
+//   // When internally saving this document we always pass options,
+//   // bypassing the custom schema options.
+//   var optionsParameter = options;
+//   if (!(options && 'Object' == options.constructor.name) ||
+//       (options && options._useSchemaOptions)) {
+//     options = this.schema.options.toObject
+//       ? utils.clone(this.schema.options.toObject)
+//       : {};
+//   }
 
-  ;('minimize' in options) || (options.minimize = this.schema.options.minimize);
-  if (!optionsParameter) {
-    options._useSchemaOptions = true;
-  }
+//   ;('minimize' in options) || (options.minimize = this.schema.options.minimize);
+//   if (!optionsParameter) {
+//     options._useSchemaOptions = true;
+//   }
 
-  var ret = utils.clone(this._doc, options);
+//   var ret = utils.clone(this._doc, options);
 
-  if (options.virtuals || options.getters && false !== options.virtuals) {
-    applyGetters(this, ret, 'virtuals', options);
-  }
+//   if (options.virtuals || options.getters && false !== options.virtuals) {
+//     applyGetters(this, ret, 'virtuals', options);
+//   }
 
-  if (options.getters) {
-    applyGetters(this, ret, 'paths', options);
-    // applyGetters for paths will add nested empty objects;
-    // if minimize is set, we need to remove them.
-    if (options.minimize) {
-      ret = minimize(ret) || {};
-    }
-  }
+//   if (options.getters) {
+//     applyGetters(this, ret, 'paths', options);
+//     // applyGetters for paths will add nested empty objects;
+//     // if minimize is set, we need to remove them.
+//     if (options.minimize) {
+//       ret = minimize(ret) || {};
+//     }
+//   }
 
-  // In the case where a subdocument has its own transform function, we need to
-  // check and see if the parent has a transform (options.transform) and if the
-  // child schema has a transform (this.schema.options.toObject) In this case,
-  // we need to adjust options.transform to be the child schema's transform and
-  // not the parent schema's
-  if (true === options.transform ||
-      (this.schema.options.toObject && options.transform)) {
-    var opts = options.json
-      ? this.schema.options.toJSON
-      : this.schema.options.toObject;
-    if (opts) {
-      options.transform = opts.transform;
-    }
-  }
+//   // In the case where a subdocument has its own transform function, we need to
+//   // check and see if the parent has a transform (options.transform) and if the
+//   // child schema has a transform (this.schema.options.toObject) In this case,
+//   // we need to adjust options.transform to be the child schema's transform and
+//   // not the parent schema's
+//   if (true === options.transform ||
+//       (this.schema.options.toObject && options.transform)) {
+//     var opts = options.json
+//       ? this.schema.options.toJSON
+//       : this.schema.options.toObject;
+//     if (opts) {
+//       options.transform = opts.transform;
+//     }
+//   }
 
-  if ('function' == typeof options.transform) {
-    var xformed = options.transform(this, ret, options);
-    if ('undefined' != typeof xformed) ret = xformed;
-  }
+//   if ('function' == typeof options.transform) {
+//     var xformed = options.transform(this, ret, options);
+//     if ('undefined' != typeof xformed) ret = xformed;
+//   }
 
-  return ret;
-};
+//   return ret;
+// };
 
 Model.prototype.toJSON = function (options) {
   // check for object type since an array of documents
@@ -1067,5 +1638,48 @@ var applyStatics = function(model, schema) {
     model[i] = schema.statics[i];
   }
 };
+
+function checkDivergentArray(doc, path, array) {
+  // see if we populated this path
+  var pop = doc.populated(path, true);
+
+  if (!pop && doc.$__.selected) {
+    // If any array was selected using an $elemMatch projection, we deny the update.
+    // NOTE: MongoDB only supports projected $elemMatch on top level array.
+    var top = path.split('.')[0];
+    if (doc.$__.selected[top + '.$']) {
+      return top;
+    }
+  }
+
+  if (!(pop && array && Array.isArray(array))) {
+    return;
+  }
+
+  console.log('pop', pop, 'array', array);
+
+  // If the array was populated using options that prevented all
+  // documents from being returned (match, skip, limit) or they
+  // deselected the _id field, $pop and $set of the array are
+  // not safe operations. If _id was deselected, we do not know
+  // how to remove elements. $pop will pop off the _id from the end
+  // of the array in the db which is not guaranteed to be the
+  // same as the last element we have here. $set of the entire array
+  // would be similarily destructive as we never received all
+  // elements of the array and potentially would overwrite data.
+  var check = pop.options.match ||
+      pop.options.options && hasOwnProperty(pop.options.options, 'limit') || // 0 is not permitted
+      pop.options.options && pop.options.options.skip || // 0 is permitted
+      pop.options.select && // deselected _id?
+      (pop.options.select._id === 0 ||
+      /\s?-_id\s?/.test(pop.options.select));
+
+  if (check) {
+    var atomics = array._atomics;
+    if (Object.keys(atomics).length === 0 || atomics.$set || atomics.$pop) {
+      return path;
+    }
+  }
+}
 
 module.exports = exports = Model;

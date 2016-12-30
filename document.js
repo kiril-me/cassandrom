@@ -5,6 +5,8 @@ var error = require('./error');
 var Promise = require('./promise');
 var InternalCache = require('./internal');
 var EventEmitter = require('events').EventEmitter;
+var deepEqual = utils.deepEqual;
+var clone = utils.clone;
 
 function Document(obj, fields) {
   this.$__ = new InternalCache;
@@ -653,10 +655,13 @@ Document.prototype.__process = function(i, path, key, prefix, constructing) {
         if (this.schema.paths[pathName] &&
             this.schema.paths[pathName].$isSingleNested &&
             path[key] instanceof Document) {
+          console.log('process ' + p);
           p = p.toObject({ virtuals: false, transform: false });
         }
         this.set(prefix + key, p, constructing);
       } else if (pathtype === 'nested' && path[key] instanceof Document) {
+        console.log('process ' + path[key]);
+
         this.set(prefix + key,
             path[key].toObject({transform: false}), constructing);
       }
@@ -1168,6 +1173,157 @@ function cleanModifiedSubpaths(doc, path) {
     }
   }
 }
+
+Document.prototype.isSelected = function isSelected(path) {
+  if (this.$__.selected) {
+    if (path === '_id') {
+      return this.$__.selected._id !== 0;
+    }
+
+    var paths = Object.keys(this.$__.selected),
+        i = paths.length,
+        inclusive = false,
+        cur;
+
+    if (i === 1 && paths[0] === '_id') {
+      // only _id was selected.
+      return this.$__.selected._id === 0;
+    }
+
+    while (i--) {
+      cur = paths[i];
+      if (cur === '_id') {
+        continue;
+      }
+      inclusive = !!this.$__.selected[cur];
+      break;
+    }
+
+    if (path in this.$__.selected) {
+      return inclusive;
+    }
+
+    i = paths.length;
+    var pathDot = path + '.';
+
+    while (i--) {
+      cur = paths[i];
+      if (cur === '_id') {
+        continue;
+      }
+
+      if (cur.indexOf(pathDot) === 0) {
+        return inclusive;
+      }
+
+      if (pathDot.indexOf(cur + '.') === 0) {
+        return inclusive;
+      }
+    }
+
+    return !inclusive;
+  }
+
+  return true;
+};
+
+Document.prototype.$toObject = function(options, json) {
+  var defaultOptions = {
+    transform: true,
+    json: json,
+    retainKeyOrder: this.schema.options.retainKeyOrder
+  };
+
+  // _isNested will only be true if this is not the top level document, we
+  // should never depopulate
+  if (options && options.depopulate && options._isNested && this.$__.wasPopulated) {
+    // populated paths that we set to a document
+    return clone(this._id, options);
+  }
+
+  // When internally saving this document we always pass options,
+  // bypassing the custom schema options.
+  if (!(options && utils.getFunctionName(options.constructor) === 'Object') ||
+      (options && options._useSchemaOptions)) {
+    if (json) {
+      options = this.schema.options.toJSON ?
+        clone(this.schema.options.toJSON) :
+        {};
+      options.json = true;
+      options._useSchemaOptions = true;
+    } else {
+      options = this.schema.options.toObject ?
+        clone(this.schema.options.toObject) :
+        {};
+      options.json = false;
+      options._useSchemaOptions = true;
+    }
+  }
+
+  for (var key in defaultOptions) {
+    if (options[key] === undefined) {
+      options[key] = defaultOptions[key];
+    }
+  }
+
+  ('minimize' in options) || (options.minimize = this.schema.options.minimize);
+
+  // remember the root transform function
+  // to save it from being overwritten by sub-transform functions
+  var originalTransform = options.transform;
+
+  options._isNested = true;
+
+  var ret = clone(this._doc, options) || {};
+
+  if (options.getters) {
+    applyGetters(this, ret, 'paths', options);
+    // applyGetters for paths will add nested empty objects;
+    // if minimize is set, we need to remove them.
+    if (options.minimize) {
+      ret = minimize(ret) || {};
+    }
+  }
+
+  if (options.virtuals || options.getters && options.virtuals !== false) {
+    applyGetters(this, ret, 'virtuals', options);
+  }
+
+  if (options.versionKey === false && this.schema.options.versionKey) {
+    delete ret[this.schema.options.versionKey];
+  }
+
+  var transform = options.transform;
+
+  // In the case where a subdocument has its own transform function, we need to
+  // check and see if the parent has a transform (options.transform) and if the
+  // child schema has a transform (this.schema.options.toObject) In this case,
+  // we need to adjust options.transform to be the child schema's transform and
+  // not the parent schema's
+  if (transform === true ||
+      (this.schema.options.toObject && transform)) {
+    var opts = options.json ? this.schema.options.toJSON : this.schema.options.toObject;
+
+    if (opts) {
+      transform = (typeof options.transform === 'function' ? options.transform : opts.transform);
+    }
+  } else {
+    options.transform = originalTransform;
+  }
+
+  if (typeof transform === 'function') {
+    var xformed = transform(this, ret, options);
+    if (typeof xformed !== 'undefined') {
+      ret = xformed;
+    }
+  }
+
+  return ret;
+};
+
+Document.prototype.toObject = function(options) {
+  return this.$toObject(options);
+};
 
 
 module.exports = exports = Document;

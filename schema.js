@@ -125,6 +125,9 @@ Schema.prototype.select = function(modelName, conditions, fields, limit) {
 Schema.prototype._insertValue = function(path, obj, name, fields, params, validationError) {
   var value = obj[name];
   var namePath =  this.paths[path];
+
+console.log(name, ':', value, '  -  ', namePath);
+
   if(namePath) {
     namePath.doValidate(value, function (err) {
       if(err) {
@@ -153,6 +156,8 @@ Schema.prototype._insertValue = function(path, obj, name, fields, params, valida
 };
 
 Schema.prototype.update = function(modelName, obj, where, delta, fields) {
+  console.trace('--');
+
   var list =[];
   if(fields && Array.isArray(fields)) {
     list = fields;
@@ -161,27 +166,39 @@ Schema.prototype.update = function(modelName, obj, where, delta, fields) {
   var paramsMap = {};
   var validationError;
 
-  console.log('udpate', where, delta);
-
-  for(var p in this.tree) {
-    validationError = this._insertValue(p, obj, p, list, paramsMap, validationError);
+  for(var p in delta) {
+    validationError = this._insertValue(p, delta, p, list, paramsMap, validationError);
   }
 
-  var query =  "UPDATE " + modelName + " (";
+  var whereMap = {};
+  for(var p in where) {
+    validationError = this._insertValue(p, where, p, list, whereMap, validationError);
+  }
+
+  console.log('where', whereMap);
+
+  var query =  'UPDATE ' + modelName + ' SET ';
   var values = '';
   var params = [];
   for(var name in paramsMap) {
     if(params.length === 0) {
       query += name.replace('\.', '_');
-      values += '?';
+      query += ' = ?';
       params.push(paramsMap[name]);
     } else {
       query += ', ' + name.replace('\.', '_');
-      values += ', ?';
+      query += ' = ?';
       params.push(paramsMap[name]);
     }
   }
-  query += ') VALUES (' + values + ')';
+  query += ' WHERE';
+
+  for(var name in whereMap) {
+    query += ' ' + name + ' = ?';
+    params.push(whereMap[name]);
+  }
+
+
 
   console.log('[cassandrom] ' + query);
   return {
@@ -924,5 +941,86 @@ Schema.prototype.eachPath = function(fn) {
 
   return this;
 };
+
+Schema.prototype._getSchema = function(path) {
+  var _this = this;
+  var pathschema = _this.path(path);
+  var resultPath = [];
+
+  if (pathschema) {
+    pathschema.$fullPath = path;
+    return pathschema;
+  }
+
+  function search(parts, schema) {
+    var p = parts.length + 1,
+        foundschema,
+        trypath;
+
+    while (p--) {
+      trypath = parts.slice(0, p).join('.');
+      foundschema = schema.path(trypath);
+      if (foundschema) {
+        resultPath.push(trypath);
+
+        if (foundschema.caster) {
+          // array of Mixed?
+          if (foundschema.caster instanceof MongooseTypes.Mixed) {
+            foundschema.caster.$fullPath = resultPath.join('.');
+            return foundschema.caster;
+          }
+
+          // Now that we found the array, we need to check if there
+          // are remaining document paths to look up for casting.
+          // Also we need to handle array.$.path since schema.path
+          // doesn't work for that.
+          // If there is no foundschema.schema we are dealing with
+          // a path like array.$
+          if (p !== parts.length && foundschema.schema) {
+            if (parts[p] === '$') {
+              // comments.$.comments.$.title
+              return search(parts.slice(p + 1), foundschema.schema);
+            }
+            // this is the last path of the selector
+            return search(parts.slice(p), foundschema.schema);
+          }
+        }
+
+        foundschema.$fullPath = resultPath.join('.');
+
+        return foundschema;
+      }
+    }
+  }
+
+  // look for arrays
+  return search(path.split('.'), _this);
+};
+
+Schema.prototype._getVirtual = function(name) {
+  return _getVirtual(this, name);
+};
+
+function _getVirtual(schema, name) {
+  var parts = name.split('.');
+  var cur = '';
+  var nestedSchemaPath = '';
+  for (var i = 0; i < parts.length; ++i) {
+    cur += (cur.length > 0 ? '.' : '') + parts[i];
+    if (schema.virtuals[cur]) {
+      if (i === parts.length - 1) {
+        schema.virtuals[cur].$nestedSchemaPath = nestedSchemaPath;
+        return schema.virtuals[cur];
+      }
+      continue;
+    } else if (schema.paths[cur] && schema.paths[cur].schema) {
+      schema = schema.paths[cur].schema;
+      nestedSchemaPath += (nestedSchemaPath.length > 0 ? '.' : '') + cur;
+      cur = '';
+    } else {
+      return null;
+    }
+  }
+}
 
 module.exports = exports = Schema;

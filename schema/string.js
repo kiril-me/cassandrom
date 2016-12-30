@@ -162,7 +162,7 @@ SchemaString.prototype.cast = function (value, doc, init) {
     return ret;
   }
 
-  if (value === null) {
+  if (value === null || value === undefined) {
     return value;
   }
 
@@ -225,7 +225,9 @@ SchemaString.prototype.castForQuery = function ($conditional, val) {
     return handler.call(this, val);
   } else {
     val = $conditional;
-    if (val instanceof RegExp) return val;
+    if (val instanceof RegExp) {
+      return val;
+    }
     return this.cast(val);
   }
 };

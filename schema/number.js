@@ -135,6 +135,8 @@ SchemaNumber.prototype.cast = function (value, doc, init) {
         val.toString() == Number(val)) {
       return new Number(val)
     }
+  } else if (val === undefined) {
+    return null;
   }
 
   throw new CastError('number', value, this.path);

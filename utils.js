@@ -123,6 +123,18 @@ exports.each = function(arr, fn) {
 
 exports.object = {};
 
+exports.object.vals = function vals(o) {
+  var keys = Object.keys(o),
+      i = keys.length,
+      ret = [];
+
+  while (i--) {
+    ret.push(o[keys[i]]);
+  }
+
+  return ret;
+};
+
 var hop = Object.prototype.hasOwnProperty;
 exports.object.hasOwnProperty = function(obj, prop) {
   return hop.call(obj, prop);
@@ -140,6 +152,8 @@ exports.isNullOrUndefined = function(val) {
 };
 
 exports.toObject = function toObject(obj) {
+  console.log('toObject: ' + obj);
+
   Document || (Document = require('./document'));
   var ret;
 
@@ -253,4 +267,209 @@ exports.tick = function tick(callback) {
       });
     }
   };
+};
+
+function PopulateOptions(path, select, match, options, model, subPopulate) {
+  this.path = path;
+  this.match = match;
+  this.select = select;
+  this.options = options;
+  this.model = model;
+  if (typeof subPopulate === 'object') {
+    this.populate = subPopulate;
+  }
+  this._docs = {};
+}
+
+// make it compatible with utils.clone
+PopulateOptions.prototype.constructor = Object;
+
+// expose
+exports.PopulateOptions = PopulateOptions;
+
+exports.populate = function populate(path, select, model, match, options, subPopulate) {
+  // The order of select/conditions args is opposite Model.find but
+  // necessary to keep backward compatibility (select could be
+  // an array, string, or object literal).
+
+  // might have passed an object specifying all arguments
+  if (arguments.length === 1) {
+    if (path instanceof PopulateOptions) {
+      return [path];
+    }
+
+    if (Array.isArray(path)) {
+      return path.map(function(o) {
+        return exports.populate(o)[0];
+      });
+    }
+
+    if (exports.isObject(path)) {
+      match = path.match;
+      options = path.options;
+      select = path.select;
+      model = path.model;
+      subPopulate = path.populate;
+      path = path.path;
+    }
+  } else if (typeof model !== 'string' && typeof model !== 'function') {
+    options = match;
+    match = model;
+    model = undefined;
+  }
+
+  if (typeof path !== 'string') {
+    throw new TypeError('utils.populate: invalid path. Expected string. Got typeof `' + typeof path + '`');
+  }
+
+  if (typeof subPopulate === 'object') {
+    subPopulate = exports.populate(subPopulate);
+  }
+
+  var ret = [];
+  var paths = path.split(' ');
+  options = exports.clone(options, { retainKeyOrder: true });
+  for (var i = 0; i < paths.length; ++i) {
+    ret.push(new PopulateOptions(paths[i], select, match, options, model, subPopulate));
+  }
+
+  return ret;
+};
+
+
+exports.array = {};
+
+exports.array.flatten = function flatten(arr, filter, ret) {
+  ret || (ret = []);
+
+  arr.forEach(function(item) {
+    if (Array.isArray(item)) {
+      flatten(item, filter, ret);
+    } else {
+      if (!filter || filter(item)) {
+        ret.push(item);
+      }
+    }
+  });
+
+  return ret;
+};
+
+exports.array.unique = function(arr) {
+  var primitives = {};
+  var ids = {};
+  var ret = [];
+  var length = arr.length;
+  for (var i = 0; i < length; ++i) {
+    if (typeof arr[i] === 'number' || typeof arr[i] === 'string') {
+      if (primitives[arr[i]]) {
+        continue;
+      }
+      ret.push(arr[i]);
+      primitives[arr[i]] = true;
+    }
+    /* TODO
+    else if (arr[i] instanceof ObjectId) {
+      if (ids[arr[i].toString()]) {
+        continue;
+      }
+      ret.push(arr[i]);
+      ids[arr[i].toString()] = true;
+    }
+    */
+    else {
+      ret.push(arr[i]);
+    }
+  }
+
+  return ret;
+};
+
+
+exports.deepEqual = function deepEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+
+  if (a instanceof Date && b instanceof Date) {
+    return a.getTime() === b.getTime();
+  }
+
+/* TODO
+  if (a instanceof ObjectId && b instanceof ObjectId) {
+    return a.toString() === b.toString();
+  }
+*/
+
+  if (a instanceof RegExp && b instanceof RegExp) {
+    return a.source === b.source &&
+        a.ignoreCase === b.ignoreCase &&
+        a.multiline === b.multiline &&
+        a.global === b.global;
+  }
+
+  if (typeof a !== 'object' && typeof b !== 'object') {
+    return a == b;
+  }
+
+  if (a === null || b === null || a === undefined || b === undefined) {
+    return false;
+  }
+
+  if (a.prototype !== b.prototype) {
+    return false;
+  }
+
+  // Handle MongooseNumbers
+  if (a instanceof Number && b instanceof Number) {
+    return a.valueOf() === b.valueOf();
+  }
+
+  if (Buffer.isBuffer(a)) {
+    return exports.buffer.areEqual(a, b);
+  }
+
+  if (isMongooseObject(a)) {
+    a = a.toObject();
+  }
+  if (isMongooseObject(b)) {
+    b = b.toObject();
+  }
+
+  try {
+    var ka = Object.keys(a),
+        kb = Object.keys(b),
+        key, i;
+  } catch (e) {
+    // happens when one is a string literal and the other isn't
+    return false;
+  }
+
+  // having the same number of owned properties (keys incorporates
+  // hasOwnProperty)
+  if (ka.length !== kb.length) {
+    return false;
+  }
+
+  // the same set of keys (although not necessarily the same order),
+  ka.sort();
+  kb.sort();
+
+  // ~~~cheap key test
+  for (i = ka.length - 1; i >= 0; i--) {
+    if (ka[i] !== kb[i]) {
+      return false;
+    }
+  }
+
+  // equivalent values for every corresponding key, and
+  // ~~~possibly expensive deep test
+  for (i = ka.length - 1; i >= 0; i--) {
+    key = ka[i];
+    if (!deepEqual(a[key], b[key])) {
+      return false;
+    }
+  }
+
+  return true;
 };
