@@ -783,6 +783,8 @@ Document.prototype.$__registerHooksFromSchema = function() {
           resolve.apply(promise, $results);
         });
 
+console.log('ups ' + newName, args);
+
         _this[newName].apply(_this, args);
       });
       if (fn) {

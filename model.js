@@ -132,6 +132,8 @@ Model.prototype.save = function save (options, fn) {
 Model.prototype.$__save = function(options, callback) {
   var _this = this;
 
+  console.log('## save');
+
   _this.$__handleSave(options, function(error, result) {
     if (error) {
       return _this.schema.s.hooks.execPost('save:error', _this, [_this], { error: error }, function(error) {
@@ -948,7 +950,7 @@ function populate(model, docs, options, callback) {
     if (subPopulate) {
       query.populate(subPopulate);
     }
-
+console.log('pop exec' + query);
     query.exec(next.bind(this, mod, assignmentOpts));
   }
 

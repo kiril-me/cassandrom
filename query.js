@@ -2,6 +2,8 @@ var Promise = require('bluebird');
 var utils = require('./utils');
 //var cast = require('./cast');
 
+var OPERATIONS = { '$in': true };
+
 function Query(conditions, model, options) {
   this.model = model
   this.schema = model.schema;
@@ -10,6 +12,7 @@ function Query(conditions, model, options) {
    // populate: {}
   };
   this._conditions = conditions;
+
   this._limit = null;
   this._skip = null;
   this._sort = null;
@@ -195,6 +198,8 @@ Query.prototype._find = function(callback) {
 
   //console.log('fields', this._fields);
 
+
+
   this._select(fields, this._conditions, this._limit, this._sort, cb);
 
   return this;
@@ -217,8 +222,25 @@ Query.prototype._select = function(fields, conditions, limit, sort, cb) {
         if(where.length > 0) {
           where += ' AND ';
         }
-        where += path.options.name + ' = ?';
-        params.push(path.castForQuery( conditions[p]) );
+
+        if(utils.isObject(conditions[p])) {
+          for(var op in conditions[p]) {
+            if(OPERATIONS[op]) {
+              where += path.options.name + ' IN (';
+              for(var o = 0; o < conditions[p][op].length; o++) {
+                if(o > 0) {
+                  where += ', ';
+                }
+                where += '?';
+                params.push(path.castForQuery( conditions[p][op][o] ) );
+              }
+              where += ')';
+            }
+          }
+        } else {
+          where += path.options.name + ' = ?';
+          params.push(path.castForQuery( conditions[p]) );
+        }
       }
     }
 
@@ -264,6 +286,7 @@ Query.prototype.findOne = function(conditions, projection, options, callback) {
   }
 
   // make sure we don't send in the whole Document to merge()
+  console.log('findOne1', conditions);
   conditions = utils.toObject(conditions);
 
   this.op = 'findOne';
@@ -336,6 +359,9 @@ Query.prototype._findOne = function(callback) {
       _this.__parseDataOne(fields, docs, callback);
     }
   };
+
+console.log('findOne', this._conditions);
+
   this._select(fields, this._conditions, 1, this._sort, cb);
 /*
   // don't pass in the conditions because we already merged them in
@@ -470,8 +496,17 @@ Query.prototype._findOneAndUpdate = function(callback) {
   return this;
 };
 
+Query.prototype.changePrimaryKey = function(source) {
+  if('_id' in source) {
+    var id = source._id;
+    delete source._id;
+    source.id = id;
+  }
+};
+
 Query.prototype.merge = function(source) {
   if (!source) {
+    this.changePrimaryKey(this._conditions);
     return this;
   }
 
@@ -502,12 +537,13 @@ Query.prototype.merge = function(source) {
     if (source._distinct) {
       this._distinct = source._distinct;
     }
-
+    this.changePrimaryKey(this._conditions);
     return this;
   }
 
   // plain object
   utils.merge(this._conditions, source, opts);
+  this.changePrimaryKey(this._conditions);
 
   return this;
 };
@@ -532,7 +568,7 @@ Query.prototype.merge = function(source) {
 
 Query.prototype._getFields = function() {
   if(this._fields) {
-    console.log('-- ' + this._fields);
+    //console.log('-- ' + this._fields);
     return this._fields;
   } else {
     var selected = [],
@@ -546,15 +582,17 @@ Query.prototype._getFields = function() {
       seen.push(schema);
 
       schema.eachPath(function(path, type) {
-        if (prefix) {
-          path = prefix + '_' + path;
-        }
-        // analyzePath(path, type);
-        selected.push(path.replace('.', '_'));
+        if(path[0] !== '_') {
+          if (prefix) {
+            path = prefix + '_' + path;
+          }
+          // analyzePath(path, type);
+          selected.push(path.replace('.', '_'));
 
-        // array of subdocs?
-        if (type.schema) {
-          analyzeSchema(type.schema, path);
+          // array of subdocs?
+          if (type.schema) {
+            analyzeSchema(type.schema, path);
+          }
         }
       });
     };
@@ -661,10 +699,12 @@ Query.prototype.populate = function() {
 Query.prototype.skip = function(skip) {
   // console.log('skip ' + skip);
   this._skip = skip;
+  return this;
 };
 
 Query.prototype.sort = function(name) {
   // this._sort = name;
+  return this;
 };
 
 Query.prototype.where = function(conditions) {

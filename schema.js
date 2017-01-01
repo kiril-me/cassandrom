@@ -3,6 +3,7 @@ var Kareem = require('kareem');
 var EventEmitter = require('events').EventEmitter;
 var cassandraDriver = require('cassandra-driver');
 
+var PrimaryKeyType = require('./schema/primarykey');
 var UUIDType = require('./schema/uuid');
 var utils = require("./utils")
 
@@ -49,10 +50,17 @@ function Schema (obj, options) {
       insensitive: true
     };
   } else if(options) {
-    this.options = options;
+    // if(Array.isArray(options)) {
+    //   this.options = {
+    //     primaryKey: options
+    //   };
+    // } else {
+      this.options = options;
+    // }
   } else {
     this.options = {};
   }
+
 
   this.insensitive = !!this.options.insensitive;
 
@@ -62,7 +70,15 @@ function Schema (obj, options) {
   };
 
   if (obj) {
-    if(!obj.id) {
+    if(!obj._id /* && !this.options._primaryKey */) {
+      // this.options.primaryKey =  [ '_id '];
+      obj._id = {
+        type: UUIDType,
+        required: true,
+        trim: true,
+        default: cassandraDriver.types.uuid
+      };
+
       obj.id = {
         type: UUIDType,
         required: true,
@@ -72,6 +88,10 @@ function Schema (obj, options) {
     }
 
     this.add(obj);
+  } else {
+    if(!this.options.primaryKey) {
+      this.options.primaryKey =  [ '_id '];
+    }
   }
 
   for (var i = 0; i < this._defaultMiddleware.length; ++i) {
@@ -123,10 +143,13 @@ Schema.prototype.select = function(modelName, conditions, fields, limit) {
 */
 
 Schema.prototype._insertValue = function(path, obj, name, fields, params, validationError) {
+  if(path[0] === '_') {
+    return;
+  }
   var value = obj[name];
   var namePath =  this.paths[path];
 
-console.log(name, ':', value, '  -  ', namePath);
+//console.log(name, ':', value, '  -  ', namePath);
 
   if(namePath) {
     namePath.doValidate(value, function (err) {
@@ -174,8 +197,6 @@ Schema.prototype.update = function(modelName, obj, where, delta, fields) {
   for(var p in where) {
     validationError = this._insertValue(p, where, p, list, whereMap, validationError);
   }
-
-  console.log('where', whereMap);
 
   var query =  'UPDATE ' + modelName + ' SET ';
   var values = '';
@@ -519,7 +540,7 @@ Schema.prototype.build = function(name) {
     ki = keys.length;
 
     while (ki--) {
-      if ('_id' !== keys[ki]) {
+      if (this.options.primaryKey.indexOf(keys[ki]) === -1) {
         exclude = 0 === fields[keys[ki]];
         break;
       }
