@@ -1,6 +1,6 @@
 # Cassandrom
 
-Cassandrom is a Cassandra object modeling tool for Node JS.
+Cassandrom is a Cassandra object modeling tool for Node JS (like mongoose).
 
 
 # Installation
