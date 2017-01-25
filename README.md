@@ -97,4 +97,4 @@ DataStax [nodejs-driver](https://github.com/datastax/nodejs-driver) for Apache C
 _Kiril Menshikov_ - https://twitter.com/kiril
 
 # Copyright and license
-Code and documentation copyright 2015 [Lookify.co](http://www.lookify.co) Code released under the Apache 2.0 license.
+Code released under the Apache 2.0 license.
