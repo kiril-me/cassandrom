@@ -1,6 +1,6 @@
 {
   "name": "cassandrom",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "description": "Cassandra JavaScript ORM",
   "main": "index.js",
   "scripts": {
@@ -8,19 +8,19 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/lookify/cassandrom.git"
+    "url": "https://github.com/kiril-me/cassandrom.git"
   },
   "keywords": [
     "cassandrom",
     "cassandra",
     "nodejs"
   ],
-  "author": "Kiril Menshikov <kiril@lookify.co> (http://www.lookify.co)",
+  "author": "Kiril Menshikov <kiril@lookify.co>",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/lookify/cassandrom/issues"
+    "url": "https://github.com/kiril-me/cassandrom/issues"
   },
-  "homepage": "https://github.com/lookify/cassandrom",
+  "homepage": "https://github.com/kiril-me/cassandrom",
   "dependencies": {
     "async": "^2.1.4",
     "bluebird": "^3.4.6",
@@ -29,6 +29,7 @@
     "kareem": "^1.1.5",
     "mpath": "^0.2.1",
     "mquery": "^2.3.1",
+    "node-uuid": "^1.4.8",
     "power-assert": "^1.4.4",
     "sliced": "^1.0.1",
     "uuid": "^3.0.1"
