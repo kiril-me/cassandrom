@@ -4,7 +4,7 @@
   "description": "Cassandra JavaScript ORM",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha test/*.test.js test/**/*.test.js"
   },
   "repository": {
     "type": "git",
@@ -28,6 +28,8 @@
     "hooks-fixed": "^1.2.0",
     "kareem": "^1.1.5",
     "mpath": "^0.2.1",
+    "mquery": "^2.3.1",
+    "power-assert": "^1.4.4",
     "sliced": "^1.0.1",
     "uuid": "^3.0.1"
   }

@@ -1,22 +1,33 @@
-var Schema = require('./schema');
-var Model = require('./model');
-var Error = require('./error');
 
+var parallel = require('async/parallel');
 var cassandraDriver = require('cassandra-driver');
+
+var Schema = require('./lib/schema');
+var Connection = require('./lib/connection');
+var utils = require('./lib/utils');
+var Promise = require('./lib/promise');
+var Model = require('./lib/model');
+var error = require('./lib/error');
+
+var log = require('./lib/log');
+
 var types = cassandraDriver.types;
+var format = utils.toCollectionName;
+
+var KEYSPACE_DOES_NOT_EXIST_ERROR = 8704;
 
 function Cassandrom() {
   this.connections = [];
+
   this.models = {};
   this.modelSchemas = {};
 
   this.uuid = types.uuid;
 
-  this.Types = require('./types');
+  this.Types = require('./lib/types');
 
-  this.UUIDType = require('./schema/uuid');
-  this.ObjectId = require('./schema/objectid');
-  this.ListId = require('./schema/listid');
+  this.UUIDType = require('./lib/schema/uuid');
+  this.ListId = require('./lib/schema/listid');
 
   this.options = {
 
@@ -24,10 +35,14 @@ function Cassandrom() {
 }
 
 Cassandrom.prototype.Schema = Schema;
+Cassandrom.prototype.Promise = Promise;
 
 Cassandrom.prototype.connect = Cassandrom.prototype.createConnection = function (options, fn) {
-  var conn = new cassandraDriver.Client(options);
+  var keyspace = options.keyspace;
+  delete options.keyspace;
 
+  var conn = new Connection(this, options);
+  var index = this.connections.length;
   this.connections.push(conn);
 
   conn._events = {
@@ -40,17 +55,71 @@ Cassandrom.prototype.connect = Cassandrom.prototype.createConnection = function 
     return this;
   };
 
+  var self = this;
+
+  if(fn && options.createTables) {
+    var done = fn;
+    fn = function(error, conn) {
+      if(error) {
+        done(error);
+      } else {
+        self._createTables(conn, done);
+      }
+    };
+  }
+  fn = fn || function() {};
+
+  var connectToKeyspace = function(error) {
+    if(error) {
+      fn(error, conn);
+    } else {
+      conn.useKeyspace(keyspace, function(err, result) {
+        if(err) {
+          if(options.createKeyspace) {
+            log.info('Create keyspace ' + keyspace);
+            conn.createKeyspace(keyspace, 'SimpleStrategy', 1, function(error) {
+              if(error) {
+                log.info('Create keyspace Error: ' + error);
+                conn._events['error'](error);
+                fn(error, conn);
+              } else {
+                conn.useKeyspace(keyspace, function(err, result) {
+                  if(err) {
+                    log.info('Could not use ' + keyspace + '  ' + err);
+                    conn._events['error'](error);
+                  } else {
+                    self._setupConnection(conn);
+                    conn._events['open']();
+                  }
+                  fn(error, conn);
+                });
+              }
+            });
+          } else {
+            conn._events['error'](error);
+            fn(error, conn);
+          }
+        } else {
+          self._setupConnection(conn);
+          conn._events['open']();
+          fn(error, conn);
+        }
+      });
+    }
+  };
+
   conn.connect(function(error) {
     if(error) {
-      console.log('[cassandrom] Connection Error: ' + error);
+      log.info('Connection Error: ' + error);
       conn._events['error'](error);
     } else {
-      console.log('[cassandrom] Cassandrom successfully connected...');
-      conn._events['open']();
+      log.info('Successfully connected...');
     }
-    if(fn) {
-      fn(error);
-    }
+    connectToKeyspace(error);
+  });
+
+  conn.onClose(function() {
+    self.connections.splice(index, 1);
   });
 
   this.connection = conn;
@@ -116,6 +185,8 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
     return this.models[name];
   }
 
+
+
   // ensure a schema exists
   if (!schema) {
     schema = this.modelSchemas[name];
@@ -124,15 +195,15 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
     }
   }
 
-  if (!collection) {
-    collection = schema.get('collection') || format(name, schema.options);
+  if(!schema.primaryKey) {
+    throw new Error('Primary Key must be provided');
   }
 
-  var connection = this.connections[0]; //options.connection || this.connection;
+  if (!collection) {
+    collection = schema.get('collection') || name;
+  }
 
-  // console.log("schema " + JSON.stringify(schema) );
-
-  model = Model.compile(name, schema, collection, this);
+  model = Model.compile(name, schema, collection, null);
 
   if (!skipInit) {
     model.init();
@@ -143,10 +214,37 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
   }
 
   return this.models[name] = model;
-}
-
-Cassandrom.prototype.execute = function() {
-  this.connections[0].execute.apply(this.connections[0], arguments);
 };
+
+Cassandrom.prototype._createTables = function(conn, done) {
+  var toExecute = [];
+  for(var name in this.models) {
+    var schema = this.models[name].schema;
+    toExecute.push(function(callback) {
+      conn.createTableIfNotExists(name, schema, callback);
+    });
+  }
+  if(toExecute.length > 0) {
+    parallel(toExecute, function(error, savedDocs) {
+      if(error) {
+        console.error('[cassandrom] Could not create table ' + error);
+      }
+      done(error, conn);
+    });
+  } else {
+    done(null, conn);
+  }
+};
+
+Cassandrom.prototype._setupConnection = function(connection) {
+  for(var name in this.models) {
+    var model = this.models[name];
+    if(!model.base) {
+      model.base = model.prototype.base = connection;
+    }
+  }
+};
+
+
 
 var cassandra = module.exports = exports = new Cassandrom;
