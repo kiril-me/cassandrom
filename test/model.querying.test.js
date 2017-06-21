@@ -45,7 +45,7 @@ describe('model: querying:', function() {
       tags: [ String ],
       score: Number,
       owners: [ cassandrom.UUIDType ],
-     // comments: [ Comments ],
+      comments : [{ type: cassandrom.UUIDType, ref: 'Comments' }],
       def: {type: String, default: 'kandinsky'}
     });
     BlogPostB.setPrimaryKey('id');

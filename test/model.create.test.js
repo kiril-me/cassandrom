@@ -209,6 +209,7 @@ describe('model', function() {
       });
 
     });
+
   });
 });
 
