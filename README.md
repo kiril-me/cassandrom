@@ -89,6 +89,22 @@ schema.statics.findById = function(id, callback) {
 };
 ```
 
+# Promise
+```js
+User.findOne({ username: name })
+    .then(function(user)) {
+
+    }
+    .catch(function(error) {
+
+    });
+```
+
+# ES6
+```js
+const user = await aUser.findOne({ username: name });
+```
+
 # Cassandra Driver access
 DataStax [nodejs-driver](https://github.com/datastax/nodejs-driver) for Apache Cassandra were used.
 
