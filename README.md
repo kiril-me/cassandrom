@@ -29,14 +29,14 @@ cassandrom.createConnection({ contactPoints: [
 
 ```js
 var schema = new cassandrom.Schema({
-  userId:   { type: cassandrom.UUIDType, required: true, trim: true, default: cassandrom.uuid },
+  userId:   { type: cassandrom.UUIDType, required: true, default: cassandrom.uuid },
   fullName: { type: String, required: true, trim: true },
   username: { type: String, required: true, unique: true, trim: true },
   email:    { type: String, required: true, unique: true, trim: true },
   password: { type: String, required: true },
   date:     { type: Date, default: Date.now, required: true }
 
-}, true);
+}, ['userId']);
 ```
 
 # Get Model and Start work
