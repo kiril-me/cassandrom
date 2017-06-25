@@ -7,4 +7,7 @@ author:
   name:       Kirils Mensikovs
   url:        https://github.com/kiril-me/cassandrom
 
-theme: jekyll-theme-cayman
+gems:
+  - jekyll-paginate
+
+markdown: kramdown
