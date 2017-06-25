@@ -1,1 +1,10 @@
+title:        Cassandrom
+tagline:      Cassandra object modeling tool for node.Js
+baseurl:      ""
+paginate:     1
+
+author:
+  name:       Kirils Mensikovs
+  url:        http://kiril.me
+
 theme: jekyll-theme-cayman
