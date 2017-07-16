@@ -312,7 +312,7 @@ describe('model: querying:', function() {
         });
       });
     });
-
+/*
     it('casts $modifiers', function(done) {
       var before = cassandrom.uuid();
       var post = new BlogPostB({
@@ -334,6 +334,8 @@ describe('model: querying:', function() {
         });
       });
     });
+*/
+
 /*
     it('querying if an array contains one of multiple members $in a set', function(done) {
       var post = new BlogPostB();
