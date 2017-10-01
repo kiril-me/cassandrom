@@ -95,6 +95,7 @@ module.exports.cassandraVersion = function(cb) {
 function dropDBs(done) {
   var db = module.exports({ noErrorListener: true });
   db.once('open', function() {
+    console.log('Drop DB');
     // drop the default test database
     db.dropDatabase(function() {
       done();

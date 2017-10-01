@@ -138,6 +138,7 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
     collection = null;
   }
 
+
   // handle internal options from connection.model()
   var options;
   if (skipInit && utils.isObject(skipInit)) {
@@ -185,8 +186,6 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
     return this.models[name];
   }
 
-
-
   // ensure a schema exists
   if (!schema) {
     schema = this.modelSchemas[name];
@@ -207,6 +206,10 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
 
   if (!skipInit) {
     model.init();
+  }
+
+  if(!model.base && this.connection) {
+    model.base = model.prototype.base = this.connection;
   }
 
   if (false === options.cache) {
