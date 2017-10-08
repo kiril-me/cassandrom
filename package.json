@@ -1,6 +1,6 @@
 {
   "name": "cassandrom",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "description": "Cassandra JavaScript ORM",
   "main": "index.js",
   "scripts": {
