@@ -127,7 +127,7 @@ Cassandrom.prototype.connect = Cassandrom.prototype.createConnection = function 
   return conn;
 };
 
-Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
+Cassandrom.prototype.model = function (name, schema, collection, skipInit, cb) {
   if ('string' == typeof schema) {
     collection = schema;
     schema = false;
@@ -211,6 +211,16 @@ Cassandrom.prototype.model = function (name, schema, collection, skipInit) {
   if(!model.base && this.connection) {
     model.base = model.prototype.base = this.connection;
   }
+
+  if(this.connection._options.createTables) {
+    this.connection.createTableIfNotExists(name, model.schema, function(error) {
+      if(error) {
+        console.error('[cassandrom] Failed create table ' + name + ' ' + error);
+      }
+      cb && cb(error);
+    });
+  }
+  cb && cb(error);
 
   if (false === options.cache) {
     return model;
