@@ -39,7 +39,8 @@ module.exports = function(options, done) {
   var conn = cassandrom.createConnection({
     contactPoints: [
       uri
-    ], keyspace: keyspace,
+    ], localDataCenter: 'datacenter1',
+    keyspace: keyspace,
     createKeyspace: true,
     createTables: true
   }, done);

@@ -1,6 +1,6 @@
 {
   "name": "cassandrom",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Cassandra JavaScript ORM",
   "main": "index.js",
   "scripts": {
@@ -22,16 +22,15 @@
   },
   "homepage": "https://github.com/kiril-me/cassandrom",
   "dependencies": {
-    "async": "^2.1.4",
-    "bluebird": "^3.4.6",
-    "cassandra-driver": "^3.1.6",
-    "hooks-fixed": "^1.2.0",
-    "kareem": "^1.1.5",
-    "mpath": "^0.2.1",
-    "mquery": "^2.3.1",
-    "node-uuid": "^1.4.8",
-    "power-assert": "^1.4.4",
-    "sliced": "^1.0.1",
-    "uuid": "^3.0.1"
+    "async": "^2.6.1",
+    "bluebird": "^3.5.3",
+    "cassandra-driver": "^4.0.0",
+    "hooks-fixed": "^2.0.2",
+    "kareem": "^2.3.0",
+    "mpath": "^0.5.1",
+    "mquery": "^3.2.0",
+    "uuid": "^3.3.2",
+    "power-assert": "^1.6.1",
+    "sliced": "^1.0.1"
   }
 }

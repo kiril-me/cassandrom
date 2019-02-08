@@ -21,7 +21,7 @@ var cassandrom = require('cassandrom');
 cassandrom.createConnection({ contactPoints: [
   'localhost'
   // , 'another-host',
-  ], keyspace: 'keyspace'});
+  ], localDataCenter: 'datacenter1', keyspace: 'keyspace'});
 
 ```
 
